@@ -104,7 +104,7 @@ public class InboundHandler {
         TransportLogger.logInboundMessage(channel, message);
 
         if (message.isPing()) {
-            keepAlive.receiveKeepAlive(channel);
+            keepAlive.receiveKeepAlive(channel); // ping也是在这里接受和处理的, 但发出是在keepAlive
         } else {
             messageReceived(channel, message, startTime);
         }
@@ -119,7 +119,7 @@ public class InboundHandler {
         assert header.needsToReadVariableHeader() == false;
 
         ThreadContext threadContext = threadPool.getThreadContext();
-        try (ThreadContext.StoredContext existing = threadContext.stashContext()) {
+        try (ThreadContext.StoredContext existing = threadContext.stashContext()) { // 把读取线程自己的环境先存起来, 防止被污染
             // Place the context with the headers from the message
             threadContext.setHeaders(header.getHeaders());
             threadContext.putTransient("_remote_address", remoteAddress);
@@ -231,7 +231,7 @@ public class InboundHandler {
                 } else {
                     final StreamInput stream = namedWriteableStream(message.openOrGetStreamInput());
                     assertRemoteVersion(stream, header.getVersion());
-                    final RequestHandlerRegistry<T> reg = requestHandlers.getHandler(action);
+                    final RequestHandlerRegistry<T> reg = requestHandlers.getHandler(action); // 获取到
                     assert reg != null;
 
                     final T request = newRequest(requestId, action, stream, reg);
@@ -243,7 +243,7 @@ public class InboundHandler {
                         try {
                             reg.processMessageReceived(request, transportChannel);
                         } catch (Exception e) {
-                            sendErrorResponse(reg.getAction(), transportChannel, e);
+                            sendErrorResponse(reg.getAction(), transportChannel, e); // targetNode捕获Action层未捕获异常的地方
                         }
                     } else {
                         threadPool.executor(executor).execute(new RequestHandler<>(reg, request, transportChannel));

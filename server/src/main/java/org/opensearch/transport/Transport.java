@@ -60,9 +60,9 @@ public interface Transport extends LifecycleComponent {
      */
     default <Request extends TransportRequest> void registerRequestHandler(RequestHandlerRegistry<Request> reg) {
         getRequestHandlers().registerHandler(reg);
-    }
+    } // 注册 Transport层的Handler
 
-    void setMessageListener(TransportMessageListener listener);
+    void setMessageListener(TransportMessageListener listener); // 无论进出, msg的listener
 
     default void setSlowLogThreshold(TimeValue slowLogThreshold) {}
 
@@ -73,7 +73,7 @@ public interface Transport extends LifecycleComponent {
     /**
      * The address the transport is bound on.
      */
-    BoundTransportAddress boundAddress();
+    BoundTransportAddress boundAddress(); // getBoundAddress
 
     /**
      * Further profile bound addresses
@@ -94,19 +94,19 @@ public interface Transport extends LifecycleComponent {
     /**
      * Opens a new connection to the given node. When the connection is fully connected, the listener is called.
      * The ActionListener will be called on the calling thread or the generic thread pool.
-     */
+     */ // 打开tcp连接, 连接完成后在调用线程或者通用线程池进行回调.
     void openConnection(DiscoveryNode node, ConnectionProfile profile, ActionListener<Transport.Connection> listener);
 
     TransportStats getStats();
 
     ResponseHandlers getResponseHandlers();
 
-    RequestHandlers getRequestHandlers();
+    RequestHandlers getRequestHandlers(); // 依赖具体的实现, 如何实现 RequestHanders, 注册Transport层的handler依赖和这个方法
 
     /**
      * A unidirectional connection to a {@link DiscoveryNode}
      */
-    interface Connection extends Closeable {
+    interface Connection extends Closeable { // 代表着节点间的连接的抽象. 如NodeChannels extends Connection,其实底层是很多条channel
         /**
          * The node this connection is associated with
          */
@@ -157,8 +157,7 @@ public interface Transport extends LifecycleComponent {
      * This class represents a response context that encapsulates the actual response handler, the action and the connection it was
      * executed on.
      */
-    final class ResponseContext<T extends TransportResponse> {
-
+    final class ResponseContext<T extends TransportResponse> { // 包装了: 返回处理器, 实际的acton和连接
         private final TransportResponseHandler<T> handler;
 
         private final Connection connection;
@@ -186,8 +185,8 @@ public interface Transport extends LifecycleComponent {
 
     /**
      * This class is a registry that allows
-     */
-    final class ResponseHandlers {
+     */ // allows to process response, transport层没发送一个请求, 就会在此节点建立一个handler, 用于处理接收到的返回
+    final class ResponseHandlers { // 用请求的id进行请求和返回处理器的绑定
         private final ConcurrentMapLong<ResponseContext<? extends TransportResponse>> handlers = ConcurrentCollections
             .newConcurrentMapLongWithAggressiveConcurrency();
         private final AtomicLong requestIdGenerator = new AtomicLong();
@@ -212,7 +211,7 @@ public interface Transport extends LifecycleComponent {
          * @return the new request ID
          * @see Connection#sendRequest(long, String, TransportRequest, TransportRequestOptions)
          */
-        public long add(ResponseContext<? extends TransportResponse> holder) {
+        public long add(ResponseContext<? extends TransportResponse> holder) { // transportService发送请求的时候
             long requestId = newRequestId();
             ResponseContext<? extends TransportResponse> existing = handlers.put(requestId, holder);
             assert existing == null : "request ID already in use: " + requestId;
@@ -229,7 +228,7 @@ public interface Transport extends LifecycleComponent {
 
         /**
          * Removes and returns all {@link ResponseContext} instances that match the predicate
-         */
+         */ // 节点关闭的时候, 给出所有符合要求且还未处理返回的请求
         public List<ResponseContext<? extends TransportResponse>> prune(Predicate<ResponseContext<? extends TransportResponse>> predicate) {
             final List<ResponseContext<? extends TransportResponse>> holders = new ArrayList<>();
             for (Map.Entry<Long, ResponseContext<? extends TransportResponse>> entry : handlers.entrySet()) {
@@ -263,7 +262,7 @@ public interface Transport extends LifecycleComponent {
         }
     }
 
-    final class RequestHandlers {
+    final class RequestHandlers { // 所有transport层的Action处理器的注册中心 和 RequestHandlerRegistry的区别是, 后者是单个的
 
         private volatile Map<String, RequestHandlerRegistry<? extends TransportRequest>> requestHandlers = Collections.emptyMap();
 

@@ -449,7 +449,7 @@ public final class IndexModule {
             return Type.NIOFS;
         }
     }
-
+    //
     public IndexService newIndexService(
         IndexService.IndexCreationContext indexCreationContext,
         NodeEnvironment environment,

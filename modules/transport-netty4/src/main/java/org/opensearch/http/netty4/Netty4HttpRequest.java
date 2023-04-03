@@ -161,13 +161,13 @@ public class Netty4HttpRequest implements HttpRequest {
 
     @Override
     public void release() {
-        if (pooled && released.compareAndSet(false, true)) {
+        if (pooled && released.compareAndSet(false, true)) { // double free
             request.release();
         }
     }
 
     @Override
-    public HttpRequest releaseAndCopy() {
+    public HttpRequest releaseAndCopy() { // 如果RestController在执行某些处理的时候不支持(赞成)引用直接内存空间, 就要拷贝一份了
         assert released.get() == false;
         if (pooled == false) {
             return this;

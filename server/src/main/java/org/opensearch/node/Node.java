@@ -255,8 +255,8 @@ public class Node implements Closeable {
     * controls whether the node is allowed to persist things like metadata to disk
     * Note that this does not control whether the node stores actual indices (see
     * {@link #NODE_DATA_SETTING}). However, if this is false, {@link #NODE_DATA_SETTING}
-    * and {@link #NODE_MASTER_SETTING} must also be false.
-    *
+    * and {@link #NODE_MASTER_SETTING} must also be false. // 说的是, 就算local_data设置为true, 本地也不一定会有indices, 但是如果
+    * // 设置为false , 那么一定没有data和meta data
     */
     public static final Setting<Boolean> NODE_LOCAL_STORAGE_SETTING = Setting.boolSetting(
         "node.local_storage",
@@ -424,9 +424,9 @@ public class Node implements Closeable {
             );
             resourcesToClose.add(nodeEnvironment);
             localNodeFactory = new LocalNodeFactory(settings, nodeEnvironment.nodeId());
-
+            // 每个插件都可以使用不同的executor
             final List<ExecutorBuilder<?>> executorBuilders = pluginsService.getExecutorBuilders(settings);
-
+            // 为系统内的各种任务建立不同的线程池, 且有三种线程池类型: fixed, scale, adjust queue.
             final ThreadPool threadPool = new ThreadPool(settings, executorBuilders.toArray(new ExecutorBuilder[0]));
             resourcesToClose.add(() -> ThreadPool.terminate(threadPool, 10, TimeUnit.SECONDS));
             final ResourceWatcherService resourceWatcherService = new ResourceWatcherService(settings, threadPool);
@@ -440,13 +440,13 @@ public class Node implements Closeable {
             additionalSettings.add(NODE_DATA_SETTING);
             additionalSettings.add(NODE_INGEST_SETTING);
             additionalSettings.add(NODE_MASTER_SETTING);
-            additionalSettings.add(NODE_REMOTE_CLUSTER_CLIENT);
+            additionalSettings.add(NODE_REMOTE_CLUSTER_CLIENT); // deprecated
             additionalSettings.addAll(pluginsService.getPluginSettings());
             final List<String> additionalSettingsFilter = new ArrayList<>(pluginsService.getPluginSettingsFilter());
             for (final ExecutorBuilder<?> builder : threadPool.builders()) {
                 additionalSettings.addAll(builder.getRegisteredSettings());
             }
-            client = new NodeClient(settings, threadPool);
+            client = new NodeClient(settings, threadPool); // 本地执行任务的节点
 
             final ScriptModule scriptModule = new ScriptModule(settings, pluginsService.filterPlugins(ScriptPlugin.class));
             final ScriptService scriptService = newScriptService(settings, scriptModule.engines, scriptModule.contexts);
@@ -465,17 +465,17 @@ public class Node implements Closeable {
                 additionalSettings,
                 additionalSettingsFilter,
                 settingsUpgraders
-            );
+            ); // 先初始化scriptModule ,但是通过注册listener, 让后续的clusterSettings设置通知到 scriptModule
             scriptModule.registerClusterSettingsListeners(scriptService, settingsModule.getClusterSettings());
-            final NetworkService networkService = new NetworkService(
+            final NetworkService networkService = new NetworkService( // 自定义的节点发现接口
                 getCustomNameResolvers(pluginsService.filterPlugins(DiscoveryPlugin.class))
             );
-
+            // 自定义集群管理行为, 如: 控制分片位置; clusterService->masterService集群的任务处理
             List<ClusterPlugin> clusterPlugins = pluginsService.filterPlugins(ClusterPlugin.class);
             final ClusterService clusterService = new ClusterService(settings, settingsModule.getClusterSettings(), threadPool);
             clusterService.addStateApplier(scriptService);
             resourcesToClose.add(clusterService);
-            final Set<Setting<?>> consistentSettings = settingsModule.getConsistentSettings();
+            final Set<Setting<?>> consistentSettings = settingsModule.getConsistentSettings(); // consistent 设置在所有节点都相同
             if (consistentSettings.isEmpty() == false) {
                 clusterService.addLocalNodeMasterListener(
                     new ConsistentSettingsService(settings, clusterService, consistentSettings).newHashPublisher()

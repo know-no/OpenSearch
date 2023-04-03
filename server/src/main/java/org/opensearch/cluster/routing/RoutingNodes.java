@@ -114,7 +114,7 @@ public class RoutingNodes implements Iterable<RoutingNode> {
         }
 
         // fill in the inverse of node -> shards allocated
-        // also fill replicaSet information
+        // also fill replicaSet information // indexRoutingTable代表每个index, indexShard代表shard
         for (ObjectCursor<IndexRoutingTable> indexRoutingTable : routingTable.indicesRouting().values()) {
             for (IndexShardRoutingTable indexShard : indexRoutingTable.value) {
                 assert indexShard.primary != null;
@@ -123,14 +123,14 @@ public class RoutingNodes implements Iterable<RoutingNode> {
                     // we define a replica set and keep track of it. A replica set is identified
                     // by the ShardId, as this is common for primary and replicas.
                     // A replica Set might have one (and not more) replicas with the state of RELOCATING.
-                    if (shard.assignedToNode()) {
+                    if (shard.assignedToNode()) {// 找到shard所在的node, 如果shard存在nodeId,但是nodeId不存在于map, 添加
                         RoutingNode routingNode = this.nodesToShards.computeIfAbsent(
                             shard.currentNodeId(),
                             k -> new RoutingNode(shard.currentNodeId(), clusterState.nodes().get(shard.currentNodeId()))
                         );
                         routingNode.add(shard);
-                        assignedShardsAdd(shard);
-                        if (shard.relocating()) {
+                        assignedShardsAdd(shard); // ?
+                        if (shard.relocating()) { // 可能被分配的shard, 正在被relocating, 现在它本身是 sourc
                             relocatingShards++;
                             // Add the counterpart shard with relocatingNodeId reflecting the source from which
                             // it's relocating from.

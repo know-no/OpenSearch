@@ -99,7 +99,7 @@ public class MasterService extends AbstractLifecycleComponent {
 
     private final String nodeName;
 
-    private java.util.function.Supplier<ClusterState> clusterStateSupplier;
+    private java.util.function.Supplier<ClusterState> clusterStateSupplier; // 区别与ClusterApplierService类
 
     private volatile TimeValue slowTaskLoggingThreshold;
 
@@ -120,7 +120,7 @@ public class MasterService extends AbstractLifecycleComponent {
     private void setSlowTaskLoggingThreshold(TimeValue slowTaskLoggingThreshold) {
         this.slowTaskLoggingThreshold = slowTaskLoggingThreshold;
     }
-
+    // 不过, 为什么要用同步的方式执行; 难道这个方法与其他synchronized方式会有竞争?
     public synchronized void setClusterStatePublisher(ClusterStatePublisher publisher) {
         clusterStatePublisher = publisher;
     }
@@ -899,10 +899,10 @@ public class MasterService extends AbstractLifecycleComponent {
             return;
         }
         final ThreadContext threadContext = threadPool.getThreadContext();
-        final Supplier<ThreadContext.StoredContext> supplier = threadContext.newRestorableContext(true);
+        final Supplier<ThreadContext.StoredContext> supplier = threadContext.newRestorableContext(true); // 让任务在目前的线程上下文内执行
         try (ThreadContext.StoredContext ignore = threadContext.stashContext()) {
-            threadContext.markAsSystemContext();
-
+            threadContext.markAsSystemContext(); // 不会影响到上面storedSupplier的内容, 那个是固定的, 除了resp
+            // 相同supplier的会被认为是同一个batch, 而supplier是匿名类, 相同只能是同一个对象
             List<Batcher.UpdateTask> safeTasks = tasks.entrySet()
                 .stream()
                 .map(e -> taskBatcher.new UpdateTask(config.priority(), source, e.getKey(), safe(e.getValue(), supplier), executor))

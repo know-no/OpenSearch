@@ -114,7 +114,7 @@ public class SystemIndices {
         } else if (matchingDescriptors.size() == 1) {
             return matchingDescriptors.get(0);
         } else {
-            // This should be prevented by failing on overlapping patterns at startup time, but is here just in case.
+            // This should be prevented by failing on overlapping patterns at startup time, but in here just in case.
             StringBuilder errorMessage = new StringBuilder().append("index name [")
                 .append(name)
                 .append("] is claimed as a system index by multiple system index patterns: [")

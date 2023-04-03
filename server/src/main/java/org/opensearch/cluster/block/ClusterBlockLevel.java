@@ -34,7 +34,7 @@ package org.opensearch.cluster.block;
 
 import java.util.EnumSet;
 
-public enum ClusterBlockLevel {
+public enum ClusterBlockLevel { // 集群级别的
     READ,
     WRITE,
     METADATA_READ,

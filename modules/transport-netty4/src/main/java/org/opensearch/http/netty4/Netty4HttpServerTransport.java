@@ -331,16 +331,17 @@ public class Netty4HttpServerTransport extends AbstractHttpServerTransport {
             this.handlingSettings = handlingSettings;
             this.byteBufSizer = new NettyByteBufSizer();
             this.requestCreator = new Netty4HttpRequestCreator();
-            this.requestHandler = new Netty4HttpRequestHandler(transport);
+            this.requestHandler = new Netty4HttpRequestHandler(transport); //将Ops的请求handle逻辑封装为netty的一部分
             this.responseCreator = new Netty4HttpResponseCreator();
         }
 
         @Override
         protected void initChannel(Channel ch) throws Exception {
-            Netty4HttpChannel nettyHttpChannel = new Netty4HttpChannel(ch);
-            ch.attr(HTTP_CHANNEL_KEY).set(nettyHttpChannel);
+            Netty4HttpChannel nettyHttpChannel = new Netty4HttpChannel(ch); // 包装成ops的
+            ch.attr(HTTP_CHANNEL_KEY).set(nettyHttpChannel); // 相互绑定: Netty4Channel <-> Channel
             ch.pipeline().addLast("byte_buf_sizer", byteBufSizer);
-            ch.pipeline().addLast("read_timeout", new ReadTimeoutHandler(transport.readTimeoutMillis, TimeUnit.MILLISECONDS));
+            ch.pipeline().addLast("read_timeout", new ReadTimeoutHandler(transport.readTimeoutMillis,
+                TimeUnit.MILLISECONDS)); // 连接超时, ChannelInitializer需要配置对应的超时Exception处理
             final HttpRequestDecoder decoder = new HttpRequestDecoder(
                 handlingSettings.getMaxInitialLineLength(),
                 handlingSettings.getMaxHeaderSize(),
@@ -356,11 +357,12 @@ public class Netty4HttpServerTransport extends AbstractHttpServerTransport {
             if (handlingSettings.isCompression()) {
                 ch.pipeline().addLast("encoder_compress", new HttpContentCompressor(handlingSettings.getCompressionLevel()));
             }
-            ch.pipeline().addLast("request_creator", requestCreator);
+            ch.pipeline().addLast("request_creator", requestCreator); // 可以构造出opensearch Rest请求
             ch.pipeline().addLast("response_creator", responseCreator);
-            ch.pipeline().addLast("pipelining", new Netty4HttpPipeliningHandler(logger, transport.pipeliningMaxEvents));
-            ch.pipeline().addLast("handler", requestHandler);
-            transport.serverAcceptedChannel(nettyHttpChannel);
+            ch.pipeline().addLast("pipelining", new Netty4HttpPipeliningHandler(logger,
+                transport.pipeliningMaxEvents)); // 双向
+            ch.pipeline().addLast("handler", requestHandler); // 添加处理Rest请求的handler
+            transport.serverAcceptedChannel(nettyHttpChannel); // 注册, 方便管理
         }
 
         @Override

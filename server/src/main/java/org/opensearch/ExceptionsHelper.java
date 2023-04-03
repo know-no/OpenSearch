@@ -61,7 +61,7 @@ import java.util.Set;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
-public final class ExceptionsHelper {
+public final class ExceptionsHelper { // 异常处理
 
     private static final Logger logger = LogManager.getLogger(ExceptionsHelper.class);
 

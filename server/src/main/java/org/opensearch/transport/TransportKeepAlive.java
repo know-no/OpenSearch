@@ -114,7 +114,7 @@ final class TransportKeepAlive implements Closeable {
     void receiveKeepAlive(TcpChannel channel) {
         // The client-side initiates pings and the server-side responds. So if this is a client channel, this
         // method is a no-op.
-        if (channel.isServerChannel()) {
+        if (channel.isServerChannel()) { // 如果是client, 则不需要保持
             sendPing(channel);
         }
     }

@@ -489,7 +489,7 @@ public class AllocationService {
      * If the same instance of ClusterState is returned, then no change has been made.
      */
     public ClusterState reroute(ClusterState clusterState, String reason) {
-        ClusterState fixedClusterState = adaptAutoExpandReplicas(clusterState);
+        ClusterState fixedClusterState = adaptAutoExpandReplicas(clusterState); // reroute不仅care 分片,还有副本
 
         RoutingNodes routingNodes = getMutableRoutingNodes(fixedClusterState);
         // shuffle the unassigned nodes, just so we won't have things like poison failed shards

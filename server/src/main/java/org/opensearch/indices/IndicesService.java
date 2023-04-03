@@ -671,13 +671,13 @@ public class IndicesService extends AbstractLifecycleComponent
             finalListeners,
             indexingMemoryController
         );
-        try (Closeable dummy = () -> indexService.close("temp", false)) {
+        try (Closeable dummy = () -> indexService.close("temp", false)) { // 这个用法类似go的defer close
             return indexServiceConsumer.apply(indexService);
         }
     }
 
     /**
-     * This creates a new IndexService without registering it
+     * This creates a new IndexService without registering it // IndexSerive是Creator,运行时的, 用后即弃
      */
     private synchronized IndexService createIndexService(
         IndexService.IndexCreationContext indexCreationContext,
@@ -717,7 +717,7 @@ public class IndicesService extends AbstractLifecycleComponent
         for (IndexingOperationListener operationListener : indexingOperationListeners) {
             indexModule.addIndexOperationListener(operationListener);
         }
-        pluginsService.onIndexModule(indexModule);
+        pluginsService.onIndexModule(indexModule); // 插件用来干预创建索引的切口
         for (IndexEventListener listener : builtInListeners) {
             indexModule.addIndexEventListener(listener);
         }

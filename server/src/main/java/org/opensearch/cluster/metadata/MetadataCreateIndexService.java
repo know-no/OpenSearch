@@ -376,7 +376,7 @@ public class MetadataCreateIndexService {
 
         final Index recoverFromIndex = request.recoverFrom();
         final IndexMetadata sourceMetadata = recoverFromIndex == null ? null : currentState.metadata().getIndexSafe(recoverFromIndex);
-
+        // 从已有的index中恢复
         if (sourceMetadata != null) {
             // If source metadata was provided, it means we're recovering from an existing index,
             // in which case templates don't apply, so create the index from the source metadata
@@ -1088,13 +1088,13 @@ public class MetadataCreateIndexService {
         String indexName = indexMetadata.getIndex().getName();
         ClusterBlocks.Builder blocks = createClusterBlocksBuilder(currentState, indexName, clusterBlocks);
         blocks.updateBlocks(indexMetadata);
-
+        // new
         ClusterState updatedState = ClusterState.builder(currentState).blocks(blocks).metadata(newMetadata).build();
 
         RoutingTable.Builder routingTableBuilder = RoutingTable.builder(updatedState.routingTable())
             .addAsNew(updatedState.metadata().index(indexName));
         updatedState = ClusterState.builder(updatedState).routingTable(routingTableBuilder.build()).build();
-        return rerouteRoutingTable.apply(updatedState, "index [" + indexName + "] created");
+        return rerouteRoutingTable.apply(updatedState, "index [" + indexName + "] created");//rerouteService重新分配indices
     }
 
     static IndexMetadata buildIndexMetadata(

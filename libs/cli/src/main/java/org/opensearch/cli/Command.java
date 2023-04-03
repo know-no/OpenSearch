@@ -78,7 +78,7 @@ public abstract class Command implements Closeable {
     public final int main(String[] args, Terminal terminal) throws Exception {
         if (addShutdownHook()) {
 
-            shutdownHookThread = new Thread(() -> {
+            shutdownHookThread = new Thread(() -> { // 只是为了记录: 关闭系统时候遇到的IOException, 但是close是空呀
                 try {
                     this.close();
                 } catch (final IOException e) {

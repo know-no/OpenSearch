@@ -106,7 +106,7 @@ public final class ThreadContext implements Writeable {
     public static final String ACTION_ORIGIN_TRANSIENT_NAME = "action.origin";
 
     private static final Logger logger = LogManager.getLogger(ThreadContext.class);
-    private static final ThreadContextStruct DEFAULT_CONTEXT = new ThreadContextStruct();
+    private static final ThreadContextStruct DEFAULT_CONTEXT = new ThreadContextStruct(); // 根
     private final Map<String, String> defaultHeader;
     private final ThreadLocal<ThreadContextStruct> threadLocal;
     private final int maxWarningHeaderCount;
@@ -118,7 +118,7 @@ public final class ThreadContext implements Writeable {
      */
     public ThreadContext(Settings settings) {
         this.defaultHeader = buildDefaultHeaders(settings);
-        this.threadLocal = ThreadLocal.withInitial(() -> DEFAULT_CONTEXT);
+        this.threadLocal = ThreadLocal.withInitial(() -> DEFAULT_CONTEXT); //虽然每次get都是这个值,但对它的修改都是返回新对象!
         this.maxWarningHeaderCount = SETTING_HTTP_MAX_WARNING_HEADER_COUNT.get(settings);
         this.maxWarningHeaderSize = SETTING_HTTP_MAX_WARNING_HEADER_SIZE.get(settings).getBytes();
     }
@@ -190,7 +190,7 @@ public final class ThreadContext implements Writeable {
      * The removed context can be restored when closing the returned {@link StoredContext}. The merge strategy is that headers
      * that are already existing are preserved unless they are defaults.
      */
-    public StoredContext stashAndMergeHeaders(Map<String, String> headers) {
+    public StoredContext stashAndMergeHeaders(Map<String, String> headers) { // 参数的优先级更低
         final ThreadContextStruct context = threadLocal.get();
         Map<String, String> newHeader = new HashMap<>(headers);
         newHeader.putAll(context.requestHeaders);
@@ -212,7 +212,7 @@ public final class ThreadContext implements Writeable {
      * restored by closing the returned {@link StoredContext}.
      *
      * @param preserveResponseHeaders if set to <code>true</code> the response headers of the restore thread will be preserved.
-     */
+     */ // 来自transient的header可以在这里被清除
     public StoredContext newStoredContext(boolean preserveResponseHeaders, Collection<String> transientHeadersToClear) {
         final ThreadContextStruct originalContext = threadLocal.get();
         // clear specific transient headers from the current context
@@ -225,7 +225,7 @@ public final class ThreadContext implements Writeable {
                 newTransientHeaders.remove(transientHeaderToClear);
             }
         }
-        if (newTransientHeaders != null) {
+        if (newTransientHeaders != null) { // 没有需要变化的话, 就用原来的
             ThreadContextStruct threadContextStruct = new ThreadContextStruct(
                 originalContext.requestHeaders,
                 originalContext.responseHeaders,
@@ -238,7 +238,7 @@ public final class ThreadContext implements Writeable {
         // this is the context when this method returns
         final ThreadContextStruct newContext = threadLocal.get();
         return () -> {
-            if (preserveResponseHeaders && threadLocal.get() != newContext) {
+            if (preserveResponseHeaders && threadLocal.get() != newContext) { // 线程在之后做了变量变动的动作 要保存, 且新线程内的ctx与现在的确实不是同一个(不管是不是resp变化了)
                 threadLocal.set(originalContext.putResponseHeaders(threadLocal.get().responseHeaders));
             } else {
                 threadLocal.set(originalContext);
@@ -270,12 +270,12 @@ public final class ThreadContext implements Writeable {
     public Supplier<StoredContext> newRestorableContext(boolean preserveResponseHeaders) {
         return wrapRestorable(newStoredContext(preserveResponseHeaders));
     }
-
+    // 可以理解为"复制"父的环境到当前, 然后提供一个恢复原来子的机制
     /**
      * Same as {@link #newRestorableContext(boolean)} but wraps an existing context to restore.
      * @param storedContext the context to restore
-     */
-    public Supplier<StoredContext> wrapRestorable(StoredContext storedContext) {
+     */ // 和newStoredContext的差别是多了一次lazy. supplier调用get, 则先保存now, 然后将before回复, 而before用完, now的
+    public Supplier<StoredContext> wrapRestorable(StoredContext storedContext) { // context被关闭, now又会回来
         return () -> {
             StoredContext context = newStoredContext(false);
             storedContext.restore();
@@ -709,7 +709,7 @@ public final class ThreadContext implements Writeable {
                 out.writeString(entry.getKey());
                 out.writeString(entry.getValue());
             }
-
+//            out.writeMap(requestHeaders, StreamOutput::writeString, StreamOutput::writeString);
             out.writeMap(responseHeaders, StreamOutput::writeString, StreamOutput::writeStringCollection);
         }
     }
@@ -722,15 +722,15 @@ public final class ThreadContext implements Writeable {
         private final ThreadContext.StoredContext ctx;
 
         private ContextPreservingRunnable(Runnable in) {
-            ctx = newStoredContext(false);
+            ctx = newStoredContext(false); // 先把当前的存起来
             this.in = in;
         }
 
         @Override
         public void run() {
             try (ThreadContext.StoredContext ignore = stashContext()) {
-                ctx.restore();
-                in.run();
+                ctx.restore(); // 运行时候, 再用当前的, 等于是临时性继承, 等线程执行完这个任务, 关于此任务的ctx又被清空,恢复到
+                in.run();      // 线程原来的ctx
             }
         }
 
@@ -755,7 +755,7 @@ public final class ThreadContext implements Writeable {
         private ThreadContext.StoredContext threadsOriginalContext = null;
 
         private ContextPreservingAbstractRunnable(AbstractRunnable in) {
-            creatorsContext = newStoredContext(false);
+            creatorsContext = newStoredContext(false); // father's context
             this.in = in;
         }
 
@@ -787,8 +787,8 @@ public final class ThreadContext implements Writeable {
 
         @Override
         protected void doRun() throws Exception {
-            threadsOriginalContext = stashContext();
-            creatorsContext.restore();
+            threadsOriginalContext = stashContext(); // 将线程自己的存起来
+            creatorsContext.restore(); // 恢复father
             in.doRun();
         }
 

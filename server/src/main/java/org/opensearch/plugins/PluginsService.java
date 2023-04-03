@@ -472,7 +472,7 @@ public class PluginsService implements ReportingService<PluginsAndModules> {
      * @throws IllegalStateException if a dependency cycle is found
      */
     // pkg private for tests
-    static List<Bundle> sortBundles(Set<Bundle> bundles) {
+    static List<Bundle> sortBundles(Set<Bundle> bundles) { // 这里的实现思路还是拓扑排序
         Map<String, Bundle> namedBundles = bundles.stream().collect(Collectors.toMap(b -> b.plugin.getName(), Function.identity()));
         LinkedHashSet<Bundle> sortedBundles = new LinkedHashSet<>();
         LinkedHashSet<String> dependencyStack = new LinkedHashSet<>();
@@ -523,11 +523,11 @@ public class PluginsService implements ReportingService<PluginsAndModules> {
         List<Tuple<PluginInfo, Plugin>> plugins = new ArrayList<>();
         Map<String, Plugin> loaded = new HashMap<>();
         Map<String, Set<URL>> transitiveUrls = new HashMap<>();
-        List<Bundle> sortedBundles = sortBundles(bundles);
+        List<Bundle> sortedBundles = sortBundles(bundles); // 依据插件之间的依赖关系排序, 拓扑排序
         for (Bundle bundle : sortedBundles) {
             checkBundleJarHell(JarHell.parseClassPath(), bundle, transitiveUrls);
 
-            final Plugin plugin = loadBundle(bundle, loaded);
+            final Plugin plugin = loadBundle(bundle, loaded); // 加载插件 类
             plugins.add(new Tuple<>(bundle.plugin, plugin));
         }
 
@@ -635,21 +635,21 @@ public class PluginsService implements ReportingService<PluginsAndModules> {
 
         try {
             final Logger logger = LogManager.getLogger(JarHell.class);
-            Set<URL> urls = new HashSet<>();
+            Set<URL> urls = new HashSet<>(); // 这个插件以及其当前已经加载了的exts的所有的transitiveUrls
             for (String extendedPlugin : exts) {
                 Set<URL> pluginUrls = transitiveUrls.get(extendedPlugin);
                 assert pluginUrls != null : "transitive urls should have already been set for " + extendedPlugin;
 
                 Set<URL> intersection = new HashSet<>(urls);
-                intersection.retainAll(pluginUrls);
-                if (intersection.isEmpty() == false) {
+                intersection.retainAll(pluginUrls); // 正在加载的拓展插件ext所有的transitiveUrls
+                if (intersection.isEmpty() == false) { // 插件自身以及当前已经加载的exts的 transtitives 和 正准备加载的重叠
                     throw new IllegalStateException(
                         "jar hell! extended plugins " + exts + " have duplicate codebases with each other: " + intersection
                     );
                 }
 
-                intersection = new HashSet<>(bundle.urls);
-                intersection.retainAll(pluginUrls);
+                intersection = new HashSet<>(bundle.urls); // 这个插件自身的urls
+                intersection.retainAll(pluginUrls); // 自身的和 ext的重叠
                 if (intersection.isEmpty() == false) {
                     throw new IllegalStateException(
                         "jar hell! duplicate codebases with extended plugin [" + extendedPlugin + "]: " + intersection
@@ -689,7 +689,7 @@ public class PluginsService implements ReportingService<PluginsAndModules> {
         for (String extendedPluginName : bundle.plugin.getExtendedPlugins()) {
             Plugin extendedPlugin = loaded.get(extendedPluginName);
             assert extendedPlugin != null;
-            if (ExtensiblePlugin.class.isInstance(extendedPlugin) == false) {
+            if (ExtensiblePlugin.class.isInstance(extendedPlugin) == false) { // 有的插件是不能被 依赖的
                 throw new IllegalStateException("Plugin [" + name + "] cannot extend non-extensible plugin [" + extendedPluginName + "]");
             }
             extendedLoaders.add(extendedPlugin.getClass().getClassLoader());
@@ -700,14 +700,14 @@ public class PluginsService implements ReportingService<PluginsAndModules> {
         ClassLoader loader = URLClassLoader.newInstance(bundle.urls.toArray(new URL[0]), parentLoader);
 
         // reload SPI with any new services from the plugin
-        reloadLuceneSPI(loader);
-
+        reloadLuceneSPI(loader); // 也许用了新的lucene实现
+        // 破坏双亲委培机制以获得更好的灵活性
         ClassLoader cl = Thread.currentThread().getContextClassLoader();
         try {
             // Set context class loader to plugin's class loader so that plugins
             // that have dependencies with their own SPI endpoints have a chance to load
             // and initialize them appropriately.
-            AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
+            AccessController.doPrivileged((PrivilegedAction<Void>) () -> { // 必须设置,破坏双亲委派, 让实现的plugin来加载自己的类
                 Thread.currentThread().setContextClassLoader(loader);
                 return null;
             });

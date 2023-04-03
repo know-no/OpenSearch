@@ -91,7 +91,7 @@ final class Netty4MessageChannelHandler extends ChannelDuplexHandler {
         Netty4TcpChannel channel = ctx.channel().attr(Netty4Transport.CHANNEL_KEY).get();
         final BytesReference wrapped = Netty4Utils.toBytesReference(buffer);
         try (ReleasableBytesReference reference = new ReleasableBytesReference(wrapped, buffer::release)) {
-            pipeline.handleBytes(channel, reference);
+            pipeline.handleBytes(channel, reference); // 从transport读取到的二进制数据
         }
     }
 

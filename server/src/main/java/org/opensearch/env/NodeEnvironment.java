@@ -184,7 +184,7 @@ public final class NodeEnvironment implements Closeable {
 
     /**
      * Maximum number of data nodes that should run in an environment.
-     */
+     */ // 被废弃了, 标识一个data路径下能够支持几个节点, data -> 0, 1, 2, 标识data目录下有三个节点的数据
     public static final Setting<Integer> MAX_LOCAL_STORAGE_NODES_SETTING = Setting.intSetting(
         "node.max_local_storage_nodes",
         1,
@@ -345,11 +345,11 @@ public final class NodeEnvironment implements Closeable {
             if (DiscoveryNode.isMasterNode(settings) || DiscoveryNode.isDataNode(settings)) {
                 ensureAtomicMoveSupported(nodePaths);
             }
-
-            if (DiscoveryNode.isDataNode(settings) == false) {
-                if (DiscoveryNode.isMasterNode(settings) == false) {
-                    ensureNoIndexMetadata(nodePaths);
-                }
+            // 根据这段代码可知, 如果一个节点之前是node/master, 之后角色就不能改变了. 除非使用opensearch-node工具进行不安全操作
+            if (DiscoveryNode.isDataNode(settings) == false) { // 但无论如何都要删除数据, 如果数据没有做冗余, 就不能这么操作.
+                if (DiscoveryNode.isMasterNode(settings) == false) { // 或者修改通过修改索引的allocation, 然后设置
+                    ensureNoIndexMetadata(nodePaths);  // index.routing.allocation.exclude._name, 进行节点排除.
+                }                                       // 或者关闭rebalance ,然后手动reroute.
 
                 ensureNoShardData(nodePaths);
             }

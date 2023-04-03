@@ -68,7 +68,7 @@ public class InboundPipeline implements Releasable {
         PageCacheRecycler recycler,
         LongSupplier relativeTimeInMillis,
         Supplier<CircuitBreaker> circuitBreaker,
-        Function<String, RequestHandlerRegistry<TransportRequest>> registryFunction,
+        Function<String, RequestHandlerRegistry<TransportRequest>> registryFunction, // Transport层Action的所有handler
         BiConsumer<TcpChannel, InboundMessage> messageHandler
     ) {
         this(
@@ -167,7 +167,7 @@ public class InboundPipeline implements Releasable {
                 assert aggregator.isAggregating();
                 try (InboundMessage aggregated = aggregator.finishAggregation()) {
                     statsTracker.markMessageReceived();
-                    messageHandler.accept(channel, aggregated);
+                    messageHandler.accept(channel, aggregated); // aggregated是合并整合好的消息,调用:TcpTransport#inboundMessage
                 }
             } else {
                 assert aggregator.isAggregating();

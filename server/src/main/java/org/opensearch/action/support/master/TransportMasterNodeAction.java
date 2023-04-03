@@ -159,7 +159,7 @@ public abstract class TransportMasterNodeAction<Request extends MasterNodeReques
             try {
                 final DiscoveryNodes nodes = clusterState.nodes();
                 if (nodes.isLocalNodeElectedMaster() || localExecute(request)) {
-                    // check for block, if blocked, retry, else, execute locally
+                    // check for block, if blocked, retry, else, execute locally // 每种类型都有不同的block
                     final ClusterBlockException blockException = checkBlock(request, clusterState);
                     if (blockException != null) {
                         if (!blockException.retryable()) {

@@ -44,7 +44,7 @@ import org.opensearch.common.xcontent.XContentParser;
 import java.io.IOException;
 import java.util.Map;
 import java.util.Objects;
-
+// Analyzer, 或者 charfilter, tokenizer, token filter, normalizer的定义
 public class NameOrDefinition implements Writeable, ToXContentFragment {
     // exactly one of these two members is not null
     public final String name;

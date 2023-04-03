@@ -54,7 +54,7 @@ public class TransportRequestOptions {
 
     public static final TransportRequestOptions EMPTY = new TransportRequestOptions.Builder().build();
 
-    public enum Type {
+    public enum Type { // transport层的请求类型, 或者是底层的connection, channel的类型
         RECOVERY,
         BULK,
         REG,

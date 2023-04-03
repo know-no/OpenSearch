@@ -131,7 +131,7 @@ public final class PreConfiguredTokenFilter extends PreConfiguredAnalysisCompone
         );
     }
 
-    private final boolean useFilterForMultitermQueries;
+    private final boolean useFilterForMultitermQueries; // ?
     private final boolean allowForSynonymParsing;
     private final BiFunction<TokenStream, Version, TokenStream> create;
 

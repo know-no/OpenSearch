@@ -38,7 +38,7 @@ import org.opensearch.common.concurrent.CompletableContext;
 import org.opensearch.transport.TcpServerChannel;
 
 import java.net.InetSocketAddress;
-
+// 暴露端口的ServerChannel, 这个server是指的: netty里的server, 不是ops的server
 public class Netty4TcpServerChannel implements TcpServerChannel {
 
     private final Channel channel;

@@ -84,7 +84,7 @@ public abstract class TaskBatcher {
                 )
             );
 
-        synchronized (tasksPerBatchingKey) {
+        synchronized (tasksPerBatchingKey) { // 和已有的比较
             LinkedHashSet<BatchedTask> existingTasks = tasksPerBatchingKey.computeIfAbsent(
                 firstTask.batchingKey,
                 k -> new LinkedHashSet<>(tasks.size())

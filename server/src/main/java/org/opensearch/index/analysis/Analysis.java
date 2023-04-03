@@ -160,7 +160,7 @@ public class Analysis {
         NAMED_STOP_WORDS = unmodifiableMap(namedStopWords);
     }
 
-    public static CharArraySet parseWords(
+    public static CharArraySet parseWords( // settings: stopwords 可以设置元语言: __english__, 会利用到此语言预设的stopwords
         Environment env,
         Settings settings,
         String name,
@@ -231,7 +231,7 @@ public class Analysis {
      *
      * @throws IllegalArgumentException
      *          If the word list cannot be found at either key.
-     */
+     */ // 从 settingPrefix 或者 加上path来从持久化存储获得设置详情
     public static List<String> getWordList(Environment env, Settings settings, String settingPrefix) {
         return getWordList(env, settings, settingPrefix + "_path", settingPrefix, true);
     }

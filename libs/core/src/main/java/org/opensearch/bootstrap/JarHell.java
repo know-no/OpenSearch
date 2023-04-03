@@ -183,7 +183,7 @@ public class JarHell {
         // a "list" at all. So just exclude any elements underneath the java home
         String javaHome = System.getProperty("java.home");
         output.accept("java.home: " + javaHome);
-        final Map<String, Path> clazzes = new HashMap<>(32768);
+        final Map<String, Path> clazzes = new HashMap<>(32768); //short类型的非负数个数
         Set<Path> seenJars = new HashSet<>();
         for (final URL url : urls) {
             final Path path = PathUtils.get(url.toURI());
@@ -213,7 +213,7 @@ public class JarHell {
                         }
                     }
                 }
-            } else {
+            } else { // 用于测试找到类文件
                 output.accept("examining directory: " + path);
                 // case for tests: where we have class files in the classpath
                 final Path root = PathUtils.get(url.toURI());
@@ -281,7 +281,7 @@ public class JarHell {
         }
     }
 
-    private static void checkClass(Map<String, Path> clazzes, String clazz, Path jarpath) {
+    private static void checkClass(Map<String, Path> clazzes, String clazz, Path jarpath) { // 同class不同Path
         if (clazz.equals("module-info") || clazz.endsWith(".module-info")) {
             // Ignore jigsaw module descriptions
             return;

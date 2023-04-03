@@ -93,7 +93,7 @@ public class InboundAggregator implements Releasable {
     public void aggregate(ReleasableBytesReference content) {
         ensureOpen();
         assert isAggregating();
-        if (isShortCircuited() == false) {
+        if (isShortCircuited() == false) { // 没短路
             if (isFirstContent()) {
                 firstContent = content.retain();
             } else {

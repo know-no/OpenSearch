@@ -41,7 +41,7 @@ import java.util.Map;
 /**
  * A class that groups analysis components necessary to produce a custom analyzer.
  * See {@link ReloadableCustomAnalyzer} for an example usage.
- */
+ */ // 没有行为的配置存储类
 public final class AnalyzerComponents {
 
     private final TokenizerFactory tokenizerFactory;

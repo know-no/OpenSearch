@@ -249,7 +249,7 @@ public class Netty4Transport extends TcpTransport {
         serverBootstrap.option(ChannelOption.ALLOCATOR, NettyAllocator.getAllocator());
         serverBootstrap.childOption(ChannelOption.ALLOCATOR, NettyAllocator.getAllocator());
 
-        serverBootstrap.childHandler(getServerChannelInitializer(name));
+        serverBootstrap.childHandler(getServerChannelInitializer(name)); // transport层的tcp连接的服务端
         serverBootstrap.handler(new ServerChannelExceptionHandler());
 
         serverBootstrap.childOption(ChannelOption.TCP_NODELAY, profileSettings.tcpNoDelay);
@@ -295,31 +295,31 @@ public class Netty4Transport extends TcpTransport {
         serverBootstraps.put(name, serverBootstrap);
     }
 
-    protected ChannelHandler getServerChannelInitializer(String name) {
+    protected ChannelHandler getServerChannelInitializer(String name) { // server 是tcp连接的服务端
         return new ServerChannelInitializer(name);
     }
 
-    protected ChannelHandler getClientChannelInitializer(DiscoveryNode node) {
+    protected ChannelHandler getClientChannelInitializer(DiscoveryNode node) { // client 是tcp连接的发起端, 不是真的用户客户端
         return new ClientChannelInitializer();
     }
 
     static final AttributeKey<Netty4TcpChannel> CHANNEL_KEY = AttributeKey.newInstance("es-channel");
     static final AttributeKey<Netty4TcpServerChannel> SERVER_CHANNEL_KEY = AttributeKey.newInstance("es-server-channel");
 
-    @Override
+    @Override // 初始化, 主动连接某个节点的channel
     protected Netty4TcpChannel initiateChannel(DiscoveryNode node) throws IOException {
         InetSocketAddress address = node.getAddress().address();
-        Bootstrap bootstrapWithHandler = clientBootstrap.clone();
+        Bootstrap bootstrapWithHandler = clientBootstrap.clone(); // clientBootstrap只是一份初始的配置,真正的client在初始化的时候创建
         bootstrapWithHandler.handler(getClientChannelInitializer(node));
         bootstrapWithHandler.remoteAddress(address);
         ChannelFuture connectFuture = bootstrapWithHandler.connect();
 
-        Channel channel = connectFuture.channel();
+        Channel channel = connectFuture.channel(); // todo? 应该是非阻塞操作吧. null是没连接上
         if (channel == null) {
             ExceptionsHelper.maybeDieOnAnotherThread(connectFuture.cause());
             throw new IOException(connectFuture.cause());
         }
-
+        // isServer == false -> 是客户端连接(主动发起连接的一方), 主要是为了不用保活. TransportKeepAlive.receiveKeepAlive
         Netty4TcpChannel nettyChannel = new Netty4TcpChannel(channel, false, "default", connectFuture);
         channel.attr(CHANNEL_KEY).set(nettyChannel);
 
@@ -328,8 +328,8 @@ public class Netty4Transport extends TcpTransport {
 
     @Override
     protected Netty4TcpServerChannel bind(String name, InetSocketAddress address) {
-        Channel channel = serverBootstraps.get(name).bind(address).syncUninterruptibly().channel();
-        Netty4TcpServerChannel esChannel = new Netty4TcpServerChannel(channel);
+        Channel channel = serverBootstraps.get(name).bind(address).syncUninterruptibly().channel(); // netty的channel
+        Netty4TcpServerChannel esChannel = new Netty4TcpServerChannel(channel); // 封装成ops的channel对象,方便管理.以及解耦, 面向接口编程
         channel.attr(SERVER_CHANNEL_KEY).set(esChannel);
         return esChannel;
     }

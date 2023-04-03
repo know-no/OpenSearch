@@ -36,7 +36,7 @@ import org.opensearch.common.Nullable;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
-
+// 由子类实现每个任务的执行逻辑
 public interface ClusterStateTaskExecutor<T> {
     /**
      * Update the cluster state based on the current state and the given tasks. Return the *same instance* if no state
@@ -45,8 +45,8 @@ public interface ClusterStateTaskExecutor<T> {
     ClusterTasksResult<T> execute(ClusterState currentState, List<T> tasks) throws Exception;
 
     /**
-     * indicates whether this executor should only run if the current node is master
-     */
+     * indicates whether this executor should only run if the current node is master // 可以读取节点本地的集群状态
+     */ // 而不用非要到master节点取状态
     default boolean runOnlyOnMaster() {
         return true;
     }

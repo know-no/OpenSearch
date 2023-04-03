@@ -87,7 +87,7 @@ public final class AnalysisRegistry implements Closeable {
     private final Map<String, AnalysisProvider<AnalyzerProvider<?>>> analyzers;
     private final Map<String, AnalysisProvider<AnalyzerProvider<?>>> normalizers;
 
-    public AnalysisRegistry(
+    public AnalysisRegistry( // AnalysisModule初始化的时候创建
         Environment environment,
         Map<String, AnalysisProvider<CharFilterFactory>> charFilters,
         Map<String, AnalysisProvider<TokenFilterFactory>> tokenFilters,
@@ -130,9 +130,9 @@ public final class AnalysisRegistry implements Closeable {
         Settings.EMPTY
     );
 
-    private <T> T getComponentFactory(
-        IndexSettings settings,
-        NameOrDefinition nod,
+    private <T> T getComponentFactory( // 通过()等获取Component: charfilter, tokenfilter, tokenizer
+        IndexSettings settings, // indexsettings是这个index中所有的settings, 包含了关于analyzer的.
+        NameOrDefinition nod, // 即相同的信息提取逻辑, 或者 analyzer部分的定义等, 创建 组件是相同的逻辑,
         String componentType,
         Function<String, AnalysisProvider<T>> globalComponentProvider,
         Function<String, AnalysisProvider<T>> prebuiltComponentProvider,
@@ -290,7 +290,7 @@ public final class AnalysisRegistry implements Closeable {
             );
             if (normalizer && tff instanceof NormalizingTokenFilterFactory == false) {
                 throw new IllegalArgumentException("Custom normalizer may not use filter [" + tff.name() + "]");
-            }
+            } // 用于向前感知, 如第一个是小写过滤器 后一个是"ABC","JD" 的过滤器, 则后一个感知前一个, 并且改变自己的行为为"abc", "jd"
             tff = tff.getChainAwareTokenFilterFactory(tokenizerFactory, charFilterFactories, tokenFilterFactories, name -> {
                 try {
                     return getComponentFactory(
@@ -492,7 +492,7 @@ public final class AnalysisRegistry implements Closeable {
             String typeName = currentSettings.get("type");
             if (component == Component.ANALYZER) {
                 T factory = null;
-                if (typeName == null) {
+                if (typeName == null) { // 自定义的分析器, 是可以不写type的. 省略此参数, 默认值是: custom
                     if (currentSettings.get("tokenizer") != null) {
                         factory = (T) new CustomAnalyzerProvider(settings, name, currentSettings);
                     } else {
@@ -513,7 +513,7 @@ public final class AnalysisRegistry implements Closeable {
                     factories.put(name, factory);
                     continue;
                 }
-            }
+            } // all basic provider
             AnalysisProvider<T> type = getAnalysisProvider(component, providerMap, name, typeName);
             if (type == null) {
                 throw new IllegalArgumentException("Unknown " + component + " type [" + typeName + "] for [" + name + "]");
@@ -551,14 +551,14 @@ public final class AnalysisRegistry implements Closeable {
         }
         return factories;
     }
-
+    // 获取所有 provider的入口
     private static <T> AnalysisProvider<T> getAnalysisProvider(
         Component component,
         Map<String, ? extends AnalysisProvider<T>> providerMap,
         String name,
         String typeName
     ) {
-        if (typeName == null) {
+        if (typeName == null) { // null or empty
             throw new IllegalArgumentException(component + " [" + name + "] must specify either an analyzer type, or a tokenizer");
         }
         AnalysisProvider<T> type = providerMap.get(typeName);

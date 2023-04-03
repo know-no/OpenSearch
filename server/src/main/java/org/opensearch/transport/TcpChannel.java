@@ -49,7 +49,7 @@ public interface TcpChannel extends CloseableChannel {
     /**
      * Indicates if the channel is an inbound server channel.
      */
-    boolean isServerChannel();
+    boolean isServerChannel(); // 这个server指的是: ops的connection的接受方(前者, 不是指netty的Server(后者, 虽然它如果是前者, 一定是后者
 
     /**
      * This returns the profile for this channel.

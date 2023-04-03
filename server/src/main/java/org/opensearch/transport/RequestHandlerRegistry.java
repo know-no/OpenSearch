@@ -88,7 +88,7 @@ public class RequestHandlerRegistry<Request extends TransportRequest> {
                 unregisterTask = Releasables.wrap(unregisterTask, stopTracking);
             }
             final TaskTransportChannel taskTransportChannel = new TaskTransportChannel(channel, unregisterTask);
-            handler.messageReceived(request, taskTransportChannel, task);
+            handler.messageReceived(request, taskTransportChannel, task);// 如果抛出了runtime exp, 这里不处理, 不返回给原node
             unregisterTask = null;
         } finally {
             Releasables.close(unregisterTask);

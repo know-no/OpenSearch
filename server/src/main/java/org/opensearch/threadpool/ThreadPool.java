@@ -232,7 +232,7 @@ public class ThreadPool implements ReportingService<ThreadPoolInfo>, Scheduler {
         }
         this.builders = Collections.unmodifiableMap(builders);
 
-        threadContext = new ThreadContext(settings);
+        threadContext = new ThreadContext(settings); // threadContext,  持有默认值, 以及过滤定义
 
         final Map<String, ExecutorHolder> executors = new HashMap<>();
         for (final Map.Entry<String, ExecutorBuilder> entry : builders.entrySet()) {
@@ -806,7 +806,7 @@ public class ThreadPool implements ReportingService<ThreadPoolInfo>, Scheduler {
                 return true;
             }
         } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+            Thread.currentThread().interrupt();// 继续打断, 看上层是否能处理
         }
         return false;
     }

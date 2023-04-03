@@ -838,8 +838,8 @@ public class TransportService extends AbstractLifecycleComponent
         sendRequest(connection, action, request, options, handler);
     }
 
-    private <T extends TransportResponse> void sendRequestInternal(
-        final Transport.Connection connection,
+    private <T extends TransportResponse> void sendRequestInternal( // connection由TransportService#getConnection
+        final Transport.Connection connection, // Connection是接口, 实现有: localConn, 还有 NodeChannels
         final String action,
         final TransportRequest request,
         final TransportRequestOptions options,
@@ -1065,7 +1065,7 @@ public class TransportService extends AbstractLifecycleComponent
             false,
             true
         );
-        transport.registerRequestHandler(reg);
+        transport.registerRequestHandler(reg); // 将单个transport action的处理器注册 到 transport层的所有注册中心
     }
 
     /**
@@ -1198,7 +1198,7 @@ public class TransportService extends AbstractLifecycleComponent
         }
     }
 
-    @Override
+    @Override // 直接当做全部失败, 来处理那些还未处理返回的请求
     public void onConnectionClosed(Transport.Connection connection) {
         try {
             List<Transport.ResponseContext<? extends TransportResponse>> pruned = responseHandlers.prune(

@@ -517,7 +517,8 @@ public class RoutingTable implements Iterable<IndexRoutingTable>, Diffable<Routi
         }
 
         public Builder addAsNew(IndexMetadata indexMetadata) {
-            if (indexMetadata.getState() == IndexMetadata.State.OPEN) {
+            if (indexMetadata.getState() == IndexMetadata.State.OPEN) { // 初始化一个空的index的routing,
+                // 设为因为创建index而导致的unassigned
                 IndexRoutingTable.Builder indexRoutingBuilder = new IndexRoutingTable.Builder(indexMetadata.getIndex()).initializeAsNew(
                     indexMetadata
                 );

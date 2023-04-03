@@ -246,7 +246,7 @@ final class Bootstrap {
                 final BoundTransportAddress boundTransportAddress,
                 List<BootstrapCheck> checks
             ) throws NodeValidationException {
-                BootstrapChecks.check(context, boundTransportAddress, checks);
+                BootstrapChecks.check(context, boundTransportAddress, checks); // 启动前的检查
             }
         };
     }
