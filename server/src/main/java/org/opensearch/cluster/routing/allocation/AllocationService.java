@@ -376,23 +376,23 @@ public class AllocationService {
         while (unassignedIterator.hasNext()) {
             ShardRouting shardRouting = unassignedIterator.next();
             UnassignedInfo unassignedInfo = shardRouting.unassignedInfo();
-            if (unassignedInfo.isDelayed()) {
+            if (unassignedInfo.isDelayed()) { // 由于node退出, 此shard是unassigned, 所以被delay, 等待节点在规定时间回来
                 final long newComputedLeftDelayNanos = unassignedInfo.getRemainingDelay(
                     allocation.getCurrentNanoTime(),
                     metadata.getIndexSafe(shardRouting.index()).getSettings()
                 );
-                if (newComputedLeftDelayNanos == 0) {
+                if (newComputedLeftDelayNanos == 0) { // 说明 已经超时了
                     unassignedIterator.updateUnassigned(
                         new UnassignedInfo(
-                            unassignedInfo.getReason(),
+                            unassignedInfo.getReason(), // reason
                             unassignedInfo.getMessage(),
                             unassignedInfo.getFailure(),
-                            unassignedInfo.getNumFailedAllocations(),
-                            unassignedInfo.getUnassignedTimeInNanos(),
+                            unassignedInfo.getNumFailedAllocations(), // 之前失败过几次
+                            unassignedInfo.getUnassignedTimeInNanos(), // unassigned的时间
                             unassignedInfo.getUnassignedTimeInMillis(),
-                            false,
-                            unassignedInfo.getLastAllocationStatus(),
-                            unassignedInfo.getFailedNodeIds()
+                            false, // 不再delay
+                            unassignedInfo.getLastAllocationStatus(), // 上一次allocation的状态
+                            unassignedInfo.getFailedNodeIds() // 失败的节点
                         ),
                         shardRouting.recoverySource(),
                         allocation.changes()
@@ -490,11 +490,11 @@ public class AllocationService {
      */
     public ClusterState reroute(ClusterState clusterState, String reason) {
         ClusterState fixedClusterState = adaptAutoExpandReplicas(clusterState); // reroute不仅care 分片,还有副本
-
-        RoutingNodes routingNodes = getMutableRoutingNodes(fixedClusterState);
+        // 获取可变的 RoutingNodes, 关于 RoutingNodes 和 RoutingTable的区别: 见: ...todo
+        RoutingNodes routingNodes = getMutableRoutingNodes(fixedClusterState); // 从RoutingTable开始构建, 详情见方法内部
         // shuffle the unassigned nodes, just so we won't have things like poison failed shards
         routingNodes.unassigned().shuffle();
-        RoutingAllocation allocation = new RoutingAllocation(
+        RoutingAllocation allocation = new RoutingAllocation(//持有routingNodes中shard的allocation状态,以及负责allocation的decider
             allocationDeciders,
             routingNodes,
             fixedClusterState,
@@ -502,12 +502,12 @@ public class AllocationService {
             snapshotsInfoService.snapshotShardSizes(),
             currentNanoTime()
         );
-        reroute(allocation);
-        if (fixedClusterState == clusterState && allocation.routingNodesChanged() == false) {
+        reroute(allocation); // 核心逻辑
+        if (fixedClusterState == clusterState && allocation.routingNodesChanged() == false) { // 没有变化, 说明需要reroute的
             return clusterState;
-        }
-        return buildResultAndLogHealthChange(clusterState, allocation, reason);
-    }
+        } // 有变化, 构建reroute的结果
+        return buildResultAndLogHealthChange(clusterState, allocation, reason); // 返回新的ClusterState, 新的ClusterState,
+    }       // 看调用者怎么处理新状态,一般会广播, 进入二阶段提交, 然后data节点就可以learn了
 
     private void logClusterHealthStateChange(ClusterStateHealth previousStateHealth, ClusterStateHealth newStateHealth, String reason) {
         ClusterHealthStatus previousHealth = previousStateHealth.getStatus();
@@ -519,7 +519,7 @@ public class AllocationService {
 
     private boolean hasDeadNodes(RoutingAllocation allocation) {
         for (RoutingNode routingNode : allocation.routingNodes()) {
-            if (allocation.nodes().getDataNodes().containsKey(routingNode.nodeId()) == false) {
+            if (allocation.nodes().getDataNodes().containsKey(routingNode.nodeId()) == false) {//存在有shard在不存活的节点
                 return true;
             }
         }
@@ -532,36 +532,36 @@ public class AllocationService {
             : "auto-expand replicas out of sync with number of nodes in the cluster";
         assert assertInitialized();
 
-        removeDelayMarkers(allocation);
-
+        removeDelayMarkers(allocation); // 如果有shard 因为 node 离开的delay分配而超时, 去掉delay标识,表示可以重新分配了
+        // 首先, 优先分配已经存在 shard 副本的,
         allocateExistingUnassignedShards(allocation);  // try to allocate existing shard copies first
-        shardsAllocator.allocate(allocation);
+        shardsAllocator.allocate(allocation); // ShardsAllocator主要是为了集群的平衡
         assert RoutingNodes.assertShardStats(allocation.routingNodes());
     }
 
     private void allocateExistingUnassignedShards(RoutingAllocation allocation) {
         allocation.routingNodes().unassigned().sort(PriorityComparator.getAllocationComparator(allocation)); // sort for priority ordering
-
+        // 按照优先级 "index.priority" 优先恢复高优的
         for (final ExistingShardsAllocator existingShardsAllocator : existingShardsAllocators.values()) {
-            existingShardsAllocator.beforeAllocation(allocation);
-        }
-
+            existingShardsAllocator.beforeAllocation(allocation);//各个不同的ExistingShardsAllocators在allocation前要做的准备动作.
+        } // 如 GatewayAllocation 会到验证清理一些缓存
+        // allocate 主
         final RoutingNodes.UnassignedShards.UnassignedIterator primaryIterator = allocation.routingNodes().unassigned().iterator();
-        while (primaryIterator.hasNext()) {
+        while (primaryIterator.hasNext()) { // 遍历每个主shard
             final ShardRouting shardRouting = primaryIterator.next();
-            if (shardRouting.primary()) {
+            if (shardRouting.primary()) { // 调用背后的  primary allocator
                 getAllocatorForShard(shardRouting, allocation).allocateUnassigned(shardRouting, allocation, primaryIterator);
             }
         }
 
         for (final ExistingShardsAllocator existingShardsAllocator : existingShardsAllocators.values()) {
-            existingShardsAllocator.afterPrimariesBeforeReplicas(allocation);
-        }
+            existingShardsAllocator.afterPrimariesBeforeReplicas(allocation); // 为了 replica allocation 做准备
+        } // 例如: Gateway的策略是, 如果当前有正在被恢复的副本, 则也许可以跳过它的allocate, 这样可以减少复制
 
         final RoutingNodes.UnassignedShards.UnassignedIterator replicaIterator = allocation.routingNodes().unassigned().iterator();
         while (replicaIterator.hasNext()) {
             final ShardRouting shardRouting = replicaIterator.next();
-            if (shardRouting.primary() == false) {
+            if (shardRouting.primary() == false) { // 调用背后的 replicas  allocator
                 getAllocatorForShard(shardRouting, allocation).allocateUnassigned(shardRouting, allocation, replicaIterator);
             }
         }
@@ -662,13 +662,13 @@ public class AllocationService {
         }
         return AllocateUnassignedDecision.NOT_TAKEN;
     }
-
+    // 获取这shard的allocator, 可能是index.settings里设置的, 来自插件的
     private ExistingShardsAllocator getAllocatorForShard(ShardRouting shardRouting, RoutingAllocation routingAllocation) {
         assert assertInitialized();
         final String allocatorName = ExistingShardsAllocator.EXISTING_SHARDS_ALLOCATOR_SETTING.get(
             routingAllocation.metadata().getIndexSafe(shardRouting.index()).getSettings()
         );
-        final ExistingShardsAllocator existingShardsAllocator = existingShardsAllocators.get(allocatorName);
+        final ExistingShardsAllocator existingShardsAllocator = existingShardsAllocators.get(allocatorName); //额外的alloc
         return existingShardsAllocator != null ? existingShardsAllocator : new NotFoundAllocator(allocatorName);
     }
 

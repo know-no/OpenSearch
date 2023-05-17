@@ -90,10 +90,10 @@ public class LagDetector {
     public void setTrackedNodes(final Iterable<DiscoveryNode> discoveryNodes) {
         final Set<DiscoveryNode> discoveryNodeSet = new HashSet<>();
         discoveryNodes.forEach(discoveryNodeSet::add);
-        discoveryNodeSet.remove(localNodeSupplier.get());
-        appliedStateTrackersByNode.keySet().retainAll(discoveryNodeSet);
+        discoveryNodeSet.remove(localNodeSupplier.get()); // 丢掉本地节点啦啦啦
+        appliedStateTrackersByNode.keySet().retainAll(discoveryNodeSet); // 这里存储着每个节点的追踪信息,日志应用情况
         discoveryNodeSet.forEach(node -> appliedStateTrackersByNode.putIfAbsent(node, new NodeAppliedStateTracker(node)));
-    }
+    } // 最后, 把新增的这些节点, 添加到 所有节点'日志应用'追踪器里
 
     public void clearTrackedNodes() {
         appliedStateTrackersByNode.clear();

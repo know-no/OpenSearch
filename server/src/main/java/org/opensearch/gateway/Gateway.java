@@ -69,11 +69,11 @@ public class Gateway {
     }
 
     public void performStateRecovery(final GatewayStateRecoveredListener listener) throws GatewayException {
-        final String[] nodesIds = clusterService.state().nodes().getMasterNodes().keys().toArray(String.class);
-        logger.trace("performing state recovery from {}", Arrays.toString(nodesIds));
+        final String[] nodesIds = clusterService.state().nodes().getMasterNodes().keys().toArray(String.class); //获取具有Matser资格的节点列表
+        logger.trace("performing state recovery from {}", Arrays.toString(nodesIds)); //发送请求获取各个节点的元信息，阻塞
         final TransportNodesListGatewayMetaState.NodesGatewayMetaState nodesState = listGatewayMetaState.list(nodesIds, null).actionGet();
 
-        final int requiredAllocation = Math.max(1, minimumMasterNodes);
+        final int requiredAllocation = Math.max(1, minimumMasterNodes); // zen1模式的缺陷之一: 必须要用户设置了过半的个数
 
         if (nodesState.hasFailures()) {
             for (final FailedNodeException failedNodeException : nodesState.failures()) {
@@ -104,7 +104,7 @@ public class Gateway {
         }
         // update the global state, and clean the indices, we elect them in the next phase
         final Metadata.Builder metadataBuilder = Metadata.builder(electedGlobalState).removeAllIndices();
-
+        // 选举索引元信息，逻辑同集群元信息
         assert !indices.containsKey(null);
         final Object[] keys = indices.keys;
         for (int i = 0; i < keys.length; i++) {
@@ -116,14 +116,14 @@ public class Gateway {
                     if (nodeState.metadata() == null) {
                         continue;
                     }
-                    final IndexMetadata indexMetadata = nodeState.metadata().index(index);
+                    final IndexMetadata indexMetadata = nodeState.metadata().index(index); // 找到这个节点中关于这个索引的元信息
                     if (indexMetadata == null) {
                         continue;
                     }
                     if (electedIndexMetadata == null) {
                         electedIndexMetadata = indexMetadata;
                     } else if (indexMetadata.getVersion() > electedIndexMetadata.getVersion()) {
-                        electedIndexMetadata = indexMetadata;
+                        electedIndexMetadata = indexMetadata; // 选择最高版本的
                     }
                     indexMetadataCount++;
                 }

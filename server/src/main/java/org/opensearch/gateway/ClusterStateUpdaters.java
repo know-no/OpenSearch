@@ -116,7 +116,7 @@ public class ClusterStateUpdaters {
         // initialize all index routing tables as empty
         final RoutingTable.Builder routingTableBuilder = RoutingTable.builder(state.routingTable());
         for (final ObjectCursor<IndexMetadata> cursor : state.metadata().indices().values()) {
-            routingTableBuilder.addAsRecovery(cursor.value);
+            routingTableBuilder.addAsRecovery(cursor.value); // 标为正在unassigned, 因为CLUSTER_RECOVER
         }
         // start with 0 based versions for routing table
         routingTableBuilder.version(0);
@@ -136,7 +136,7 @@ public class ClusterStateUpdaters {
     }
 
     static ClusterState mixCurrentStateAndRecoveredState(final ClusterState currentState, final ClusterState recoveredState) {
-        assert currentState.metadata().indices().isEmpty();
+        assert currentState.metadata().indices().isEmpty(); // 当前集群状态没有indices信息,因为正在恢复中
 
         final ClusterBlocks.Builder blocks = ClusterBlocks.builder().blocks(currentState.blocks()).blocks(recoveredState.blocks());
 

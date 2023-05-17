@@ -190,7 +190,7 @@ final class IndexShardOperationPermits implements Closeable {
         }
     }
 
-    private void releaseDelayedOperations() {
+    private void releaseDelayedOperations() { // 执行的地方
         final List<DelayedOperation> queuedActions;
         synchronized (this) {
             assert queuedBlockOperations > 0;
@@ -212,8 +212,8 @@ final class IndexShardOperationPermits implements Closeable {
              *     onFailure handler is executed on the calling thread; this should not be the recovery thread as it would delay the
              *     recovery
              */
-            threadPool.executor(ThreadPool.Names.GENERIC).execute(() -> {
-                for (DelayedOperation queuedAction : queuedActions) {
+            threadPool.executor(ThreadPool.Names.GENERIC).execute(() -> { // 使用 generic 线程来获取 permit,但是主要操作在指定的其他线程池
+                for (DelayedOperation queuedAction : queuedActions) { // 除了onFail操作, 会在generic线程执行
                     acquire(queuedAction.listener, null, false, queuedAction.debugInfo, queuedAction.stackTrace);
                 }
             });
@@ -248,7 +248,7 @@ final class IndexShardOperationPermits implements Closeable {
             stackTrace = Thread.currentThread().getStackTrace();
         } else {
             stackTrace = null;
-        }
+        } // onResponse 会在executorOnDelay线程池执行, onFail会在同员工线程池执行
         acquire(onAcquired, executorOnDelay, forceExecution, debugInfo, stackTrace);
     }
 
@@ -266,21 +266,21 @@ final class IndexShardOperationPermits implements Closeable {
         final Releasable releasable;
         try {
             synchronized (this) {
-                if (queuedBlockOperations > 0) {
+                if (queuedBlockOperations > 0) { // 如果队列里有操作在等待了
                     final Supplier<StoredContext> contextSupplier = threadPool.getThreadContext().newRestorableContext(false);
                     final ActionListener<Releasable> wrappedListener;
                     if (executorOnDelay != null) {
-                        wrappedListener = ActionListener.delegateFailure(
-                            new ContextPreservingActionListener<>(contextSupplier, onAcquired),
+                        wrappedListener = ActionListener.delegateFailure( // 将失败丢给第一个参数处理, 看谁处理: delayedOperations
+                            new ContextPreservingActionListener<>(contextSupplier, onAcquired),//如果失败,将在调用者线程调用onFail
                             (l, r) -> threadPool.executor(executorOnDelay).execute(new ActionRunnable<Releasable>(l) {
-                                @Override
+                                @Override  // 成功了, 即 onResponse(T), 则在executorOnDelay线程池调用
                                 public boolean isForceExecution() {
                                     return forceExecution;
                                 }
 
                                 @Override
                                 protected void doRun() {
-                                    listener.onResponse(r);
+                                    listener.onResponse(r); // listener即使 l
                                 }
 
                                 @Override
@@ -295,7 +295,7 @@ final class IndexShardOperationPermits implements Closeable {
                     }
                     delayedOperations.add(new DelayedOperation(wrappedListener, debugInfo, stackTrace));
                     return;
-                } else {
+                } else { // 队列里没有在等待的, 直接获得 acquire结果, 然后交给 onAccqired执行, releasable就是 Response
                     releasable = acquire(debugInfo, stackTrace);
                 }
             }

@@ -56,7 +56,7 @@ import java.util.stream.Collectors;
  * Global metadata generation could be obtained by calling {@link #getGlobalGeneration()}.
  * Index metadata generation could be obtained by calling {@link #getIndexGenerations()}.
  */
-public class Manifest implements ToXContentFragment {
+public class Manifest implements ToXContentFragment { // 从磁盘读取 meta data的入口
     // TODO revisit missing and unknown constants once Zen2 BWC is ready
     private static final long MISSING_GLOBAL_GENERATION = -1L;
     private static final long MISSING_CURRENT_TERM = 0L;

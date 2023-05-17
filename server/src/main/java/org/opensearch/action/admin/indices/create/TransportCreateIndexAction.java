@@ -92,7 +92,7 @@ public class TransportCreateIndexAction extends TransportMasterNodeAction<Create
         return state.blocks().indexBlockedException(ClusterBlockLevel.METADATA_WRITE, request.index());
     }
 
-    @Override
+    @Override // master operation. 此时已经到了master节点. TransportMasterNodeAction执行的时候会把请求发送过来
     protected void masterOperation(
         final CreateIndexRequest request,
         final ClusterState state,
@@ -102,19 +102,19 @@ public class TransportCreateIndexAction extends TransportMasterNodeAction<Create
         if (cause.length() == 0) {
             cause = "api";
         }
-
+        //FromA:transport在做完校验以后, 转换请求为cluster状态更新请求: ClusterStateUpdateRequest implements AckedRequest
         final String indexName = indexNameExpressionResolver.resolveDateMathExpression(request.index());
         final CreateIndexClusterStateUpdateRequest updateRequest = new CreateIndexClusterStateUpdateRequest(
             cause,
             indexName,
             request.index()
-        ).ackTimeout(request.timeout())
-            .masterNodeTimeout(request.masterNodeTimeout())
+        ).ackTimeout(request.timeout()) // 总超时时间
+            .masterNodeTimeout(request.masterNodeTimeout()) // master节点的超时时间
             .settings(request.settings())
             .mappings(request.mappings())
             .aliases(request.aliases())
-            .waitForActiveShards(request.waitForActiveShards());
-
+            .waitForActiveShards(request.waitForActiveShards()); // 等待有多少活跃的shard副本
+        // 调用 MetadataCreateIndexService 封装的逻辑, 创建索引, 修改集群状态
         createIndexService.createIndex(
             updateRequest,
             ActionListener.map(

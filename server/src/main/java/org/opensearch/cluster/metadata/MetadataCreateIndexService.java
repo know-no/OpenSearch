@@ -294,7 +294,7 @@ public class MetadataCreateIndexService {
     public void createIndex(
         final CreateIndexClusterStateUpdateRequest request,
         final ActionListener<CreateIndexClusterStateUpdateResponse> listener
-    ) {
+    ) { // 取决于用户的超时参数, 以及waitForActiveShards设置, 返回值
         onlyCreateIndex(request, ActionListener.wrap(response -> {
             if (response.isAcknowledged()) {
                 activeShardsObserver.waitForActiveShards(
@@ -322,8 +322,8 @@ public class MetadataCreateIndexService {
         final CreateIndexClusterStateUpdateRequest request,
         final ActionListener<ClusterStateUpdateResponse> listener
     ) {
-        normalizeRequestSetting(request);
-        clusterService.submitStateUpdateTask(
+        normalizeRequestSetting(request); // settings的修正, 保证都有同样的prefix: IndexMetadata.INDEX_SETTING_PREFIX
+        clusterService.submitStateUpdateTask( // 提交集群状态更新任务
             "create-index [" + request.index() + "], cause [" + request.cause() + "]",
             new AckedClusterStateUpdateTask<ClusterStateUpdateResponse>(Priority.URGENT, request, listener) {
                 @Override
@@ -392,7 +392,7 @@ public class MetadataCreateIndexService {
             // The backing index may have a different name or prefix than the data stream name.
             final String name = request.dataStreamName() != null ? request.dataStreamName() : request.index();
             // Check to see if a v2 template matched
-            final String v2Template = MetadataIndexTemplateService.findV2Template(
+            final String v2Template = MetadataIndexTemplateService.findV2Template( // 索引的模板匹配
                 currentState.metadata(),
                 name,
                 isHiddenFromRequest == null ? false : isHiddenFromRequest

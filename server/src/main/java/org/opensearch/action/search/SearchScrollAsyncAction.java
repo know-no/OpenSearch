@@ -149,25 +149,25 @@ abstract class SearchScrollAsyncAction<T extends SearchPhaseResult> implements R
     }
 
     private void run(BiFunction<String, String, DiscoveryNode> clusterNodeLookup, final SearchContextIdForNode[] context) {
-        final CountDown counter = new CountDown(scrollId.getContext().length);
+        final CountDown counter = new CountDown(scrollId.getContext().length); // countdown
         for (int i = 0; i < context.length; i++) {
             SearchContextIdForNode target = context[i];
             final int shardIndex = i;
             final Transport.Connection connection;
             try {
-                DiscoveryNode node = clusterNodeLookup.apply(target.getClusterAlias(), target.getNode());
+                DiscoveryNode node = clusterNodeLookup.apply(target.getClusterAlias(), target.getNode()); // 寻找node
                 if (node == null) {
                     throw new IllegalStateException("node [" + target.getNode() + "] is not available");
                 }
-                connection = getConnection(target.getClusterAlias(), node);
-            } catch (Exception ex) {
+                connection = getConnection(target.getClusterAlias(), node); // 调用searchservice 获取connection
+            } catch (Exception ex) {                                        // 底层还是transportService
                 onShardFailure(
                     "query",
-                    counter,
+                    counter, // fail will countDown
                     target.getSearchContextId(),
                     ex,
-                    null,
-                    () -> SearchScrollAsyncAction.this.moveToNextPhase(clusterNodeLookup)
+                    null, // 这个节点失败了也不要阻塞, 或者放弃整个流程
+                    () -> SearchScrollAsyncAction.this.moveToNextPhase(clusterNodeLookup) // move to next phrase
                 );
                 continue;
             }
@@ -184,7 +184,7 @@ abstract class SearchScrollAsyncAction<T extends SearchPhaseResult> implements R
                 protected void setSearchShardTarget(T response) {
                     // don't do this - it's part of the response...
                     assert response.getSearchShardTarget() != null : "search shard target must not be null";
-                    if (target.getClusterAlias() != null) {
+                    if (target.getClusterAlias() != null) { // 如果这次请求的节点是远程节点, 修改search阶段的返回结果
                         // re-create the search target and add the cluster alias if there is any,
                         // we need this down the road for subseq. phases
                         SearchShardTarget searchShardTarget = response.getSearchShardTarget();
@@ -205,9 +205,9 @@ abstract class SearchScrollAsyncAction<T extends SearchPhaseResult> implements R
                         + shardIndex
                         + " but got: "
                         + result.getShardIndex();
-                    onFirstPhaseResult(shardIndex, result);
-                    if (counter.countDown()) {
-                        SearchPhase phase = moveToNextPhase(clusterNodeLookup);
+                    onFirstPhaseResult(shardIndex, result); // 监听钩子, 子类需要实现的
+                    if (counter.countDown()) { // 此处代表对某个节点的scroll成功了, 如果 countDown == 0, 则所有都成功了
+                        SearchPhase phase = moveToNextPhase(clusterNodeLookup); // 触发下一个阶段
                         try {
                             phase.run();
                         } catch (Exception e) {
@@ -233,7 +233,7 @@ abstract class SearchScrollAsyncAction<T extends SearchPhaseResult> implements R
                     );
                 }
             };
-            executeInitialPhase(connection, internalRequest, searchActionListener);
+            executeInitialPhase(connection, internalRequest, searchActionListener); // 发送请求即返回, 所以每个节点的search都是并行的
         }
     }
 

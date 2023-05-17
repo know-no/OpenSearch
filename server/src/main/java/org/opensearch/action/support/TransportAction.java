@@ -164,7 +164,7 @@ public abstract class TransportAction<Request extends ActionRequest, Response ex
         if (task != null && request.getShouldStoreResult()) {
             listener = new TaskResultStoringActionListener<>(taskManager, task, listener);
         }
-
+        // todo 每次都新建是不是有点多余
         RequestFilterChain<Request, Response> requestFilterChain = new RequestFilterChain<>(this, logger);
         requestFilterChain.proceed(task, actionName, request, listener);
     }

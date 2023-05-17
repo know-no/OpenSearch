@@ -200,7 +200,7 @@ public class DiscoveryModule {
                 namedWriteableRegistry,
                 allocationService,
                 masterService,
-                gatewayMetaState::getPersistedState,
+                gatewayMetaState::getPersistedState, // 持久化状态的类
                 seedHostsProvider,
                 clusterApplier,
                 joinValidators,

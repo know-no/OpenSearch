@@ -377,7 +377,7 @@ public abstract class MetadataStateFormat<T> {
             if (Files.exists(resolve)) {
                 try (DirectoryStream<Path> stream = Files.newDirectoryStream(resolve, prefix + "*")) {
                     for (Path stateFile : stream) {
-                        final Matcher matcher = stateFilePattern.matcher(stateFile.getFileName().toString());
+                        final Matcher matcher = stateFilePattern.matcher(stateFile.getFileName().toString()); // 读取状态文件
                         if (matcher.matches()) {
                             final long id = Long.parseLong(matcher.group(1));
                             maxId = Math.max(maxId, id);

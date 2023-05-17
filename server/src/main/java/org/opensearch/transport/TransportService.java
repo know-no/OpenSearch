@@ -1056,8 +1056,8 @@ public class TransportService extends AbstractLifecycleComponent
     ) {
         validateActionName(action);
         handler = interceptor.interceptHandler(action, executor, false, handler);
-        RequestHandlerRegistry<Request> reg = new RequestHandlerRegistry<>(
-            action,
+        RequestHandlerRegistry<Request> reg = new RequestHandlerRegistry<>( // RequestHandlerRegistry和TransportRequestHandler
+            action,     // 后者只是处理 request 而前者包含 action->如何处理, executor,在哪个线程处理, taskManager任务有哪些等等
             requestReader,
             taskManager,
             handler,

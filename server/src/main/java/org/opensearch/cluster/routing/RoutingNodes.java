@@ -79,11 +79,11 @@ import java.util.function.Predicate;
  * </ul>
  */
 public class RoutingNodes implements Iterable<RoutingNode> {
-
+    // node
     private final Map<String, RoutingNode> nodesToShards = new HashMap<>();
-
+    //
     private final UnassignedShards unassignedShards = new UnassignedShards(this);
-
+    // 已经分配了的. 不过不管这个shard所在的node是否在线 见 org/opensearch/cluster/routing/RoutingNodes.java:127
     private final Map<ShardId, List<ShardRouting>> assignedShards = new HashMap<>();
 
     private final boolean readOnly;
@@ -105,52 +105,52 @@ public class RoutingNodes implements Iterable<RoutingNode> {
 
     public RoutingNodes(ClusterState clusterState, boolean readOnly) {
         this.readOnly = readOnly;
-        final RoutingTable routingTable = clusterState.routingTable();
+        final RoutingTable routingTable = clusterState.routingTable(); // 从RoutingTable开始构建
 
         // fill in the nodeToShards with the "live" nodes
         for (ObjectCursor<DiscoveryNode> cursor : clusterState.nodes().getDataNodes().values()) {
             String nodeId = cursor.value.getId();
             this.nodesToShards.put(cursor.value.getId(), new RoutingNode(nodeId, clusterState.nodes().get(nodeId)));
-        }
-
+        } // 构建node <-> RoutingNodes(空的, 还没有数据)
+        // 开始填充
         // fill in the inverse of node -> shards allocated
         // also fill replicaSet information // indexRoutingTable代表每个index, indexShard代表shard
         for (ObjectCursor<IndexRoutingTable> indexRoutingTable : routingTable.indicesRouting().values()) {
             for (IndexShardRoutingTable indexShard : indexRoutingTable.value) {
                 assert indexShard.primary != null;
-                for (ShardRouting shard : indexShard) {
+                for (ShardRouting shard : indexShard) { // 三重循环, 终于达到shard级别
                     // to get all the shards belonging to an index, including the replicas,
                     // we define a replica set and keep track of it. A replica set is identified
                     // by the ShardId, as this is common for primary and replicas.
                     // A replica Set might have one (and not more) replicas with the state of RELOCATING.
-                    if (shard.assignedToNode()) {// 找到shard所在的node, 如果shard存在nodeId,但是nodeId不存在于map, 添加
-                        RoutingNode routingNode = this.nodesToShards.computeIfAbsent(
-                            shard.currentNodeId(),
+                    if (shard.assignedToNode()) {//找到shard所在的node,如果shard存在nodeId,但是nodeId不存在于nodesToShards, 添加
+                        RoutingNode routingNode = this.nodesToShards.computeIfAbsent( // 不存在于nodesToShards的情况是
+                            shard.currentNodeId(), // 可能节点下线, 之前在routingTable里, 但是现在不在了?(不过在集群重启恢复这个场景不存在)
                             k -> new RoutingNode(shard.currentNodeId(), clusterState.nodes().get(shard.currentNodeId()))
-                        );
+                        ); // 现在构建的是 node <-> shard allocated, 哪怕下线的node, 也应该有信息,只要它有shard存在
                         routingNode.add(shard);
-                        assignedShardsAdd(shard); // ?
-                        if (shard.relocating()) { // 可能被分配的shard, 正在被relocating, 现在它本身是 sourc
-                            relocatingShards++;
+                        assignedShardsAdd(shard); // 标识
+                        if (shard.relocating()) { // 被分配的shard正在被relocating, 现在它本身是 source
+                            relocatingShards++; // 更新状态
                             // Add the counterpart shard with relocatingNodeId reflecting the source from which
                             // it's relocating from.
                             routingNode = nodesToShards.computeIfAbsent(
-                                shard.relocatingNodeId(),
+                                shard.relocatingNodeId(), // 当下获取的是 source node 的id, 因为它现在的状态是 RELOCATING,本身是source
                                 k -> new RoutingNode(shard.relocatingNodeId(), clusterState.nodes().get(shard.relocatingNodeId()))
                             );
                             ShardRouting targetShardRouting = shard.getTargetRelocatingShard();
-                            addInitialRecovery(targetShardRouting, indexShard.primary);
-                            routingNode.add(targetShardRouting);
+                            addInitialRecovery(targetShardRouting, indexShard.primary); // 双向构建, 就像图的边的两个节点
+                            routingNode.add(targetShardRouting);  // 不过上面这行是在增加节点的 recovery的出度, 即此主shard正在被多少个副shard复制
                             assignedShardsAdd(targetShardRouting);
-                        } else if (shard.initializing()) {
+                        } else if (shard.initializing()) { // 可能是primary or replica
                             if (shard.primary()) {
-                                inactivePrimaryCount++;
+                                inactivePrimaryCount++; // 更新不活跃
                             }
                             inactiveShardCount++;
                             addInitialRecovery(shard, indexShard.primary);
                         }
                     } else {
-                        unassignedShards.add(shard);
+                        unassignedShards.add(shard); // 更新
                     }
                 }
             }
@@ -180,28 +180,28 @@ public class RoutingNodes implements Iterable<RoutingNode> {
         if (routing.primary() && (primary == null || primary == routing)) {
             assert routing.relocatingNodeId() == null : "Routing must be a non relocating primary";
             Recoveries.getOrAdd(initialPrimaryRecoveries, routing.currentNodeId()).addIncoming(howMany);
-            return;
+            return; // 增加 init 主 的, 即 节点X正在init 主的个数
         }
-
+        // 不是主  || 是主,但其他节点也有个主,是在 rebalance 吗?   1. 是创建索引的时候,且不是主, 用initialReplicaRecoveries 2. 不是1情况, 用recoveriesPerNode
         Recoveries.getOrAdd(getRecoveries(routing), routing.currentNodeId()).addIncoming(howMany);
 
-        if (routing.recoverySource().getType() == RecoverySource.Type.PEER) {
+        if (routing.recoverySource().getType() == RecoverySource.Type.PEER) { // 从其他shard复制
             // add/remove corresponding outgoing recovery on node with primary shard
             if (primary == null) {
                 throw new IllegalStateException("shard is peer recovering but primary is unassigned");
             }
-
+            //既然此节点有入度 , 且是同辈复制, 则其他某个节点一定有出度, 增加其他节点的出度. todo 但是会重复构建吗?不会, 因为只从入度来计算一次,不会再从出度计算一次
             Recoveries.getOrAdd(getRecoveries(routing), primary.currentNodeId()).addOutgoing(howMany);
 
             if (increment == false && routing.primary() && routing.relocatingNodeId() != null) {
                 // primary is done relocating, move non-primary recoveries from old primary to new primary
-                for (ShardRouting assigned : assignedShards(routing.shardId())) {
+                for (ShardRouting assigned : assignedShards(routing.shardId())) { // 当主迁移结束, 重计算对应的出入度
                     if (assigned.primary() == false
                         && assigned.initializing()
                         && assigned.recoverySource().getType() == RecoverySource.Type.PEER) {
                         Map<String, Recoveries> recoveriesToUpdate = getRecoveries(assigned);
-                        Recoveries.getOrAdd(recoveriesToUpdate, routing.relocatingNodeId()).addOutgoing(-1);
-                        Recoveries.getOrAdd(recoveriesToUpdate, routing.currentNodeId()).addOutgoing(1);
+                        Recoveries.getOrAdd(recoveriesToUpdate, routing.relocatingNodeId()).addOutgoing(-1); // 减去原来的主出度
+                        Recoveries.getOrAdd(recoveriesToUpdate, routing.currentNodeId()).addOutgoing(1); // 增加新的主的出度
                     }
                 }
 

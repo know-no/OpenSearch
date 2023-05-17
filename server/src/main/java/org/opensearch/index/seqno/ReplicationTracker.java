@@ -675,7 +675,7 @@ public class ReplicationTracker extends AbstractIndexShardComponent implements L
         /**
          * whether this shard is treated as in-sync and thus contributes to the global checkpoint calculation
          */
-        boolean inSync;
+        boolean inSync; // inSync 就是有最新数据的shard
 
         /**
          * whether this shard is tracked in the replication group, i.e., should receive document updates from the primary.

@@ -114,9 +114,9 @@ public class PublicationTransportHandler {
         this.transportService = transportService;
         this.namedWriteableRegistry = namedWriteableRegistry;
         this.handlePublishRequest = handlePublishRequest;
-
+        // 注册节点收到 master 节点的状态 publication 的handler
         transportService.registerRequestHandler(
-            PUBLISH_STATE_ACTION_NAME,
+            PUBLISH_STATE_ACTION_NAME, // PUBLISH_STATE_ACTION_NAME 是zen2的发送处理
             ThreadPool.Names.GENERIC,
             false,
             false,
@@ -125,7 +125,7 @@ public class PublicationTransportHandler {
         );
 
         transportService.registerRequestHandler(
-            PublishClusterStateAction.SEND_ACTION_NAME,
+            PublishClusterStateAction.SEND_ACTION_NAME, // zen1 的发送处理
             ThreadPool.Names.GENERIC,
             false,
             false,
@@ -137,7 +137,7 @@ public class PublicationTransportHandler {
         );
 
         transportService.registerRequestHandler(
-            COMMIT_STATE_ACTION_NAME,
+            COMMIT_STATE_ACTION_NAME, // zen2的集群状态commit 处理
             ThreadPool.Names.GENERIC,
             false,
             false,
@@ -146,7 +146,7 @@ public class PublicationTransportHandler {
         );
 
         transportService.registerRequestHandler(
-            PublishClusterStateAction.COMMIT_ACTION_NAME,
+            PublishClusterStateAction.COMMIT_ACTION_NAME, // zen1的commit 处理
             ThreadPool.Names.GENERIC,
             false,
             false,
@@ -200,7 +200,7 @@ public class PublicationTransportHandler {
     }
 
     private PublishWithJoinResponse handleIncomingPublishRequest(BytesTransportRequest request) throws IOException {
-        final Compressor compressor = CompressorFactory.compressor(request.bytes());
+        final Compressor compressor = CompressorFactory.compressor(request.bytes()); // 压缩
         StreamInput in = request.bytes().streamInput();
         try {
             if (compressor != null) {
@@ -209,7 +209,7 @@ public class PublicationTransportHandler {
             in = new NamedWriteableAwareStreamInput(in, namedWriteableRegistry);
             in.setVersion(request.version());
             // If true we received full cluster state - otherwise diffs
-            if (in.readBoolean()) {
+            if (in.readBoolean()) { // 是否全量
                 final ClusterState incomingState;
                 // Close early to release resources used by the de-compression as early as possible
                 try (StreamInput input = in) {
@@ -221,9 +221,9 @@ public class PublicationTransportHandler {
                 fullClusterStateReceivedCount.incrementAndGet();
                 logger.debug("received full cluster state version [{}] with size [{}]", incomingState.version(), request.bytes().length());
                 final PublishWithJoinResponse response = acceptState(incomingState);
-                lastSeenClusterState.set(incomingState);
+                lastSeenClusterState.set(incomingState); // 这里 lastSeenClusterState 的目的就是为了下次接收增量之后应用 diff
                 return response;
-            } else {
+            } else {  // 基于 lastSeen 应用增量 diff 产生新的完整的 incomingState
                 final ClusterState lastSeen = lastSeenClusterState.get();
                 if (lastSeen == null) {
                     logger.debug("received diff for but don't have any local cluster state - requesting full state");
@@ -363,15 +363,15 @@ public class PublicationTransportHandler {
             }
         }
 
-        public void sendPublishRequest(
+        public void sendPublishRequest( // 1. cluster 发送
             DiscoveryNode destination,
             PublishRequest publishRequest,
             ActionListener<PublishWithJoinResponse> listener
         ) {
             assert publishRequest.getAcceptedState() == newState : "state got switched on us";
-            assert transportService.getThreadPool().getThreadContext().isSystemContext();
+            assert transportService.getThreadPool().getThreadContext().isSystemContext(); // todo? 什么时候切换的呢
             final ActionListener<PublishWithJoinResponse> responseActionListener;
-            if (destination.equals(discoveryNodes.getLocalNode())) {
+            if (destination.equals(discoveryNodes.getLocalNode())) { // 只是自定义actionlistener
                 // if publishing to self, use original request instead (see currentPublishRequestToSelf for explanation)
                 final PublishRequest previousRequest = currentPublishRequestToSelf.getAndSet(publishRequest);
                 // we might override an in-flight publication to self in case where we failed as master and became master again,
@@ -392,7 +392,7 @@ public class PublicationTransportHandler {
                 };
             } else {
                 responseActionListener = listener;
-            }
+            } // 区分全量发送 与  部分分送
             if (sendFullVersion || previousState.nodes().nodeExists(destination) == false) {
                 logger.trace("sending full cluster state version [{}] to [{}]", newState.version(), destination);
                 sendFullClusterState(destination, responseActionListener);
@@ -517,7 +517,7 @@ public class PublicationTransportHandler {
                 };
                 final String actionName;
                 final TransportResponseHandler<?> transportResponseHandler;
-                if (Coordinator.isZen1Node(destination)) {
+                if (Coordinator.isZen1Node(destination)) { // 判断目标节点, 是不是zen1的模式
                     actionName = PublishClusterStateAction.SEND_ACTION_NAME;
                     transportResponseHandler = responseHandler.wrap(
                         empty -> new PublishWithJoinResponse(

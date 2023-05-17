@@ -242,7 +242,7 @@ public abstract class TransportReplicationAction<
     @Override
     protected void doExecute(Task task, Request request, ActionListener<Response> listener) {
         assert request.shardId() != null : "request shardId must be set";
-        runReroutePhase(task, request, listener, true);
+        runReroutePhase(task, request, listener, true); // 转发到对应的shard上执行
     }
 
     private void runReroutePhase(Task task, Request request, ActionListener<Response> listener, boolean initiatedByNodeClient) {
@@ -362,7 +362,7 @@ public abstract class TransportReplicationAction<
     protected Releasable checkOperationLimits(final Request request) {
         return () -> {};
     }
-
+    // 写数据 主分片处理写
     protected void handlePrimaryRequest(final ConcreteShardRequest<Request> request, final TransportChannel channel, final Task task) {
         Releasable releasable = checkPrimaryLimits(
             request.getRequest(),
@@ -408,7 +408,7 @@ public abstract class TransportReplicationAction<
             // we may end up here if the cluster state used to route the primary is so stale that the underlying
             // index shard was replaced with a replica. For example - in a two node cluster, if the primary fails
             // the replica will take over and a replica will be assigned to the first node.
-            if (shardRouting.primary() == false) {
+            if (shardRouting.primary() == false) { // 可能在处理写的时候,发现此primary已经不是primary了
                 throw new ReplicationOperation.RetryOnPrimaryException(shardId, "actual shard is not a primary " + shardRouting);
             }
             final String actualAllocationId = shardRouting.allocationId().getId();
@@ -433,7 +433,7 @@ public abstract class TransportReplicationAction<
 
             acquirePrimaryOperationPermit(
                 indexShard,
-                primaryRequest.getRequest(),
+                primaryRequest.getRequest(),      // 这里是写入的逻辑
                 ActionListener.wrap(releasable -> runWithPrimaryShardReference(new PrimaryShardReference(indexShard, releasable)), e -> {
                     if (e instanceof ShardNotInPrimaryModeException) {
                         onFailure(new ReplicationOperation.RetryOnPrimaryException(shardId, "shard is not in primary mode", e));
@@ -448,13 +448,13 @@ public abstract class TransportReplicationAction<
             try {
                 final ClusterState clusterState = clusterService.state();
                 final IndexMetadata indexMetadata = clusterState.metadata().getIndexSafe(primaryShardReference.routingEntry().index());
-
+                //
                 final ClusterBlockException blockException = blockExceptions(clusterState, indexMetadata.getIndex().getName());
                 if (blockException != null) {
                     logger.trace("cluster is blocked, action failed on primary", blockException);
                     throw blockException;
                 }
-
+                // 两种情况: 1. shard正在被Relocated(虽然是主, 但要被迁走了  2. 正常
                 if (primaryShardReference.isRelocated()) {
                     primaryShardReference.close(); // release shard operation lock as soon as possible
                     setPhase(replicationTask, "primary_delegation");
@@ -465,7 +465,7 @@ public abstract class TransportReplicationAction<
                     assert primary.relocating() : "indexShard is marked as relocated but routing isn't" + primary;
                     final Writeable.Reader<Response> reader = TransportReplicationAction.this::newResponseInstance;
                     DiscoveryNode relocatingNode = clusterState.nodes().get(primary.relocatingNodeId());
-                    transportService.sendRequest(
+                    transportService.sendRequest( // 直接转发请求就好, 然后注意回调
                         relocatingNode,
                         transportPrimaryAction,
                         new ConcreteShardRequest<>(
@@ -488,7 +488,7 @@ public abstract class TransportReplicationAction<
                             }
                         }
                     );
-                } else {
+                } else { // 真正的写入
                     setPhase(replicationTask, "primary");
 
                     final ActionListener<Response> responseListener = ActionListener.wrap(response -> {
@@ -516,12 +516,12 @@ public abstract class TransportReplicationAction<
                         setPhase(replicationTask, "finished");
                         onCompletionListener.onResponse(response);
                     }, e -> handleException(primaryShardReference, e));
-
-                    new ReplicationOperation<>(
+                    // 写数据, ReplicationOperation#Primary#perform, Primary是一个抽象, 可以进行Replication的抽象
+                    new ReplicationOperation<>( // 封装了所有关于主副本写/异常处理等等的逻辑
                         primaryRequest.getRequest(),
                         primaryShardReference,
                         ActionListener.map(responseListener, result -> result.finalResponseIfSuccessful),
-                        newReplicasProxy(),
+                        newReplicasProxy(), // 封装了所有 关于副本的 写/异常处理
                         logger,
                         threadPool,
                         actionName,
@@ -843,7 +843,7 @@ public abstract class TransportReplicationAction<
                 final IndexMetadata indexMetadata = state.metadata().index(request.shardId().getIndex());
                 if (indexMetadata == null) {
                     // ensure that the cluster state on the node is at least as high as the node that decided that the index was there
-                    if (state.version() < request.routedBasedOnClusterVersion()) {
+                    if (state.version() < request.routedBasedOnClusterVersion()) { // 出问题了, 可能此节点还未收到最新的状态
                         logger.trace(
                             "failed to find index [{}] for request [{}] despite sender thinking it would be here. "
                                 + "Local cluster state version [{}]] is older than on sending node (version [{}]), scheduling a retry...",
@@ -852,7 +852,7 @@ public abstract class TransportReplicationAction<
                             state.version(),
                             request.routedBasedOnClusterVersion()
                         );
-                        retry(
+                        retry( // 等等, 等一会, 让节点可以收到新的CLusterState, 然后重试: ReroutePhase.run()
                             new IndexNotFoundException(
                                 "failed to find index as current cluster state with version ["
                                     + state.version()
@@ -863,7 +863,7 @@ public abstract class TransportReplicationAction<
                             )
                         );
                         return;
-                    } else {
+                    } else { // // 可能在发送的时候, index又被删除了呢
                         finishAsFailed(new IndexNotFoundException(request.shardId().getIndex()));
                         return;
                     }
@@ -931,12 +931,12 @@ public abstract class TransportReplicationAction<
             }
             performAction(
                 node,
-                transportPrimaryAction,
+                transportPrimaryAction, // 加 p 的, 是主shard的请求
                 true,
                 new ConcreteShardRequest<>(
                     request,
                     primary.allocationId().getId(),
-                    indexMetadata.primaryTerm(primary.id()),
+                    indexMetadata.primaryTerm(primary.id()), // 获取, 不是设置
                     true,
                     initiatedByNodeClient
                 )
@@ -1180,7 +1180,7 @@ public abstract class TransportReplicationAction<
                 });
             }
             assert indexShard.getActiveOperationsCount() != 0 : "must perform shard operation under a permit";
-            shardOperationOnPrimary(request, indexShard, listener);
+            shardOperationOnPrimary(request, indexShard, listener); // 调用TransportReplicationAction的方法, 对indexShard进行操作
         }
 
         @Override

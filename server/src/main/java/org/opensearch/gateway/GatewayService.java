@@ -60,8 +60,8 @@ import org.opensearch.threadpool.ThreadPool;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
-
-public class GatewayService extends AbstractLifecycleComponent implements ClusterStateListener {
+// 在集群状态发生变化的时候, 负责元数据的恢复. 调用点: ClusterApplierService在应用集群状态变更的时候. 由org.opensearch.gateway.GatewayService.doStart
+public class GatewayService extends AbstractLifecycleComponent implements ClusterStateListener { //可知,此监听器只在master-eli执行
     private static final Logger logger = LogManager.getLogger(GatewayService.class);
 
     public static final Setting<Integer> EXPECTED_NODES_SETTING = Setting.intSetting(
@@ -175,7 +175,7 @@ public class GatewayService extends AbstractLifecycleComponent implements Cluste
         } else {
             recoverAfterMasterNodes = -1;
         }
-
+        // 封装两种不同的恢复流程
         if (discovery instanceof Coordinator) {
             recoveryRunnable = () -> clusterService.submitStateUpdateTask("local-gateway-elected-state", new RecoverStateUpdateTask());
         } else {
@@ -201,18 +201,18 @@ public class GatewayService extends AbstractLifecycleComponent implements Cluste
     protected void doClose() {}
 
     @Override
-    public void clusterChanged(final ClusterChangedEvent event) {
+    public void clusterChanged(final ClusterChangedEvent event) { // 由ClusterApplierService的runTask调用, 是同一个线程
         if (lifecycle.stoppedOrClosed()) {
             return;
         }
 
         final ClusterState state = event.state();
 
-        if (state.nodes().isLocalNodeElectedMaster() == false) {
+        if (state.nodes().isLocalNodeElectedMaster() == false) { // 本地不是主节点, 跳过
             // not our job to recover
             return;
         }
-        if (state.blocks().hasGlobalBlock(STATE_NOT_RECOVERED_BLOCK) == false) {
+        if (state.blocks().hasGlobalBlock(STATE_NOT_RECOVERED_BLOCK) == false) { // 没有需要recovered的阻塞态
             // already recovered
             return;
         }
@@ -238,7 +238,7 @@ public class GatewayService extends AbstractLifecycleComponent implements Cluste
                 nodes.getMasterNodes().size(),
                 recoverAfterMasterNodes
             );
-        } else {
+        } else { // 执行恢复
             boolean enforceRecoverAfterTime;
             String reason;
             if (expectedNodes == -1 && expectedMasterNodes == -1 && expectedDataNodes == -1) {
@@ -356,7 +356,7 @@ public class GatewayService extends AbstractLifecycleComponent implements Cluste
                 @Override
                 public ClusterState execute(final ClusterState currentState) {
                     final ClusterState updatedState = ClusterStateUpdaters.mixCurrentStateAndRecoveredState(currentState, recoveredState);
-                    return super.execute(ClusterStateUpdaters.recoverClusterBlocks(updatedState));
+                    return super.execute(ClusterStateUpdaters.recoverClusterBlocks(updatedState));// 重建阻塞态
                 }
             });
         }

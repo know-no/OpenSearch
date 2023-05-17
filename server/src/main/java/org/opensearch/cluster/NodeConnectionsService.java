@@ -144,7 +144,7 @@ public class NodeConnectionsService extends AbstractLifecycleComponent {
                 }
 
                 if (isNewNode) {
-                    runnables.add(connectionTarget.connect(listener));
+                    runnables.add(connectionTarget.connect(listener));//ConnectionTarget的内部future会在connect结束后,运行listener
                 } else {
                     // known node, try and ensure it's connected but do not wait
                     runnables.add(connectionTarget.connect(null));

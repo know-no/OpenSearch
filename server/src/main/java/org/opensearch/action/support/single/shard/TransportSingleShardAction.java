@@ -253,7 +253,7 @@ public abstract class TransportSingleShardAction<Request extends SingleShardRequ
                 return;
             }
             DiscoveryNode node = nodes.get(shardRouting.currentNodeId());
-            if (node == null) {
+            if (node == null) { // onFailure 会递归调用 perform , 每个shard候选都尝试一遍
                 onFailure(shardRouting, new NoShardAvailableActionException(shardRouting.shardId()));
             } else {
                 internalRequest.request().internalShardId = shardRouting.shardId();

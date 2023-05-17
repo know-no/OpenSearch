@@ -209,7 +209,7 @@ public class ClusterBootstrapService {
                 + "unless existing master is discovered",
             unconfiguredBootstrapTimeout
         );
-
+        // 持续不停的调度, 知道被关停
         transportService.getThreadPool().scheduleUnlessShuttingDown(unconfiguredBootstrapTimeout, Names.GENERIC, new Runnable() {
             @Override
             public void run() {
@@ -217,7 +217,7 @@ public class ClusterBootstrapService {
                 final List<DiscoveryNode> zen1Nodes = discoveredNodes.stream().filter(Coordinator::isZen1Node).collect(Collectors.toList());
                 if (zen1Nodes.isEmpty()) {
                     logger.debug("performing best-effort cluster bootstrapping with {}", discoveredNodes);
-                    startBootstrap(discoveredNodes, emptyList());
+                    startBootstrap(discoveredNodes, emptyList()); // 开始选主 !
                 } else {
                     logger.info("avoiding best-effort cluster bootstrapping due to discovery of pre-7.0 nodes {}", zen1Nodes);
                 }
@@ -243,7 +243,7 @@ public class ClusterBootstrapService {
         assert unsatisfiedRequirements.size() < discoveryNodes.size() : discoveryNodes + " smaller than " + unsatisfiedRequirements;
         if (bootstrappingPermitted.compareAndSet(true, false)) {
             doBootstrap(
-                new VotingConfiguration(
+                new VotingConfiguration( //  参加选举的节点
                     Stream.concat(
                         discoveryNodes.stream().map(DiscoveryNode::getId),
                         unsatisfiedRequirements.stream().map(s -> BOOTSTRAP_PLACEHOLDER_PREFIX + s)
@@ -257,14 +257,15 @@ public class ClusterBootstrapService {
         return nodeId.startsWith(BOOTSTRAP_PLACEHOLDER_PREFIX);
     }
 
-    private void doBootstrap(VotingConfiguration votingConfiguration) {
+    private void doBootstrap(VotingConfiguration votingConfiguration) { // 递归, 不断重复调度
         assert transportService.getLocalNode().isMasterNode();
 
         try {
-            votingConfigurationConsumer.accept(votingConfiguration);
+            votingConfigurationConsumer.accept(votingConfiguration); // 核心: Coordinator.setInitConfiguration()
         } catch (Exception e) {
             logger.warn(new ParameterizedMessage("exception when bootstrapping with {}, rescheduling", votingConfiguration), e);
-            transportService.getThreadPool().scheduleUnlessShuttingDown(TimeValue.timeValueSeconds(10), Names.GENERIC, new Runnable() {
+            transportService.getThreadPool().scheduleUnlessShuttingDown(TimeValue.timeValueSeconds(10), Names.GENERIC
+                , new Runnable() { // 因为幂等, 所以可以不断重试
                 @Override
                 public void run() {
                     doBootstrap(votingConfiguration);

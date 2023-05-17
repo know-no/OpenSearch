@@ -41,8 +41,8 @@ import org.opensearch.common.unit.TimeValue;
 /**
  * An extension interface to {@link ClusterStateUpdateTask} that allows to be notified when
  * all the nodes have acknowledged a cluster state update request
- */
-public abstract class AckedClusterStateUpdateTask<Response> extends ClusterStateUpdateTask implements AckedClusterStateTaskListener {
+ */ // 进一步具化, 此类任务 要求所有的节点都要ack
+public abstract class AckedClusterStateUpdateTask<Response> extends ClusterStateUpdateTask implements AckedClusterStateTaskListener { // implements 更具象的接口
 
     private final ActionListener<Response> listener;
     private final AckedRequest request;
@@ -76,7 +76,7 @@ public abstract class AckedClusterStateUpdateTask<Response> extends ClusterState
     public void onAllNodesAcked(@Nullable Exception e) {
         listener.onResponse(newResponse(e == null));
     }
-
+    // 构造任务的返回, 类型化子类需要实现
     protected abstract Response newResponse(boolean acknowledged);
 
     /**

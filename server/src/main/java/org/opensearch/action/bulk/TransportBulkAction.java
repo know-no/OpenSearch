@@ -246,7 +246,7 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
             }
         }
 
-        if (hasIndexRequestsWithPipelines) {
+        if (hasIndexRequestsWithPipelines) { // 判断本地节点是否有pipeline属性, 如果没有的话, 就得转发到pipeline节点进行处理了
             // this method (doExecute) will be called again, but with the bulk requests updated from the ingest node processing but
             // also with IngestService.NOOP_PIPELINE_NAME on each request. This ensures that this on the second time through this method,
             // this path is never taken.
@@ -304,15 +304,15 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
                 }
             }
             // Step 3: create all the indices that are missing, if there are any missing. start the bulk after all the creates come back.
-            if (autoCreateIndices.isEmpty()) {
+            if (autoCreateIndices.isEmpty()) { // 没有要自动创建的索引
                 executeBulk(task, bulkRequest, startTime, listener, responses, indicesThatCannotBeCreated);
             } else {
                 final AtomicInteger counter = new AtomicInteger(autoCreateIndices.size());
-                for (String index : autoCreateIndices) {
+                for (String index : autoCreateIndices) { // 循环创建
                     createIndex(index, bulkRequest.timeout(), minNodeVersion, new ActionListener<CreateIndexResponse>() {
                         @Override
                         public void onResponse(CreateIndexResponse result) {
-                            if (counter.decrementAndGet() == 0) {
+                            if (counter.decrementAndGet() == 0) { // 如果全部创建了 ,继续bulk
                                 threadPool.executor(executorName).execute(new ActionRunnable<BulkResponse>(listener) {
 
                                     @Override
@@ -324,16 +324,16 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
                         }
 
                         @Override
-                        public void onFailure(Exception e) {
+                        public void onFailure(Exception e) { // 有失败, 要知道, 还有其他节点也在bulk呢? 所以, 索引可能已经存在
                             if (!(ExceptionsHelper.unwrapCause(e) instanceof ResourceAlreadyExistsException)) {
-                                // fail all requests involving this index, if create didn't work
-                                for (int i = 0; i < bulkRequest.requests.size(); i++) {
+                                // fail all requests involving this index, if create didn't work // 如果此索引创建不成功,且不是已经存在了
+                                for (int i = 0; i < bulkRequest.requests.size(); i++) { // 则放弃所有关于此索引的index操作
                                     DocWriteRequest<?> request = bulkRequest.requests.get(i);
                                     if (request != null && setResponseFailureIfIndexMatches(responses, i, request, index, e)) {
                                         bulkRequest.requests.set(i, null);
                                     }
                                 }
-                            }
+                            } // 资源已存在,那就当成是陈宫了
                             if (counter.decrementAndGet() == 0) {
                                 final ActionListener<BulkResponse> wrappedListener = ActionListener.wrap(listener::onResponse, inner -> {
                                     inner.addSuppressed(e);
@@ -514,16 +514,16 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
         @Override
         protected void doRun() {
             assert bulkRequest != null;
-            final ClusterState clusterState = observer.setAndGetObservedState();
-            if (handleBlockExceptions(clusterState)) {
-                return;
-            }
+            final ClusterState clusterState = observer.setAndGetObservedState(); // ClusterState, 获取最新的状态
+            if (handleBlockExceptions(clusterState)) { // 集群的状态是否阻塞写, 是否接受重试
+                return; // 阻塞, 且不接受重试的话, 内部调用失败监听器
+            } // 给他一个状态, 给它一个解析器
             final ConcreteIndices concreteIndices = new ConcreteIndices(clusterState, indexNameExpressionResolver);
             Metadata metadata = clusterState.metadata();
             for (int i = 0; i < bulkRequest.requests.size(); i++) {
                 DocWriteRequest<?> docWriteRequest = bulkRequest.requests.get(i);
                 // the request can only be null because we set it to null in the previous step, so it gets ignored
-                if (docWriteRequest == null) {
+                if (docWriteRequest == null) { // 因为创建索引失败了, 所以被我们忽略了
                     continue;
                 }
                 if (addFailureIfRequiresAliasAndAliasIsMissing(docWriteRequest, i, metadata)) {
@@ -531,8 +531,8 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
                 }
                 if (addFailureIfIndexIsUnavailable(docWriteRequest, i, concreteIndices, metadata)) {
                     continue;
-                }
-                Index concreteIndex = concreteIndices.resolveIfAbsent(docWriteRequest);
+                } // 查看这个docWriteRequest涉及到的索引, 对写请求来说,增删改, 多只涉及到一个物理索引
+                Index concreteIndex = concreteIndices.resolveIfAbsent(docWriteRequest); // 还加了缓存, 以加快解析速度
                 try {
                     // The ConcreteIndices#resolveIfAbsent(...) method validates via IndexNameExpressionResolver whether
                     // an operation is allowed in index into a data stream, but this isn't done when resolve call is cached, so
@@ -548,7 +548,7 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
 
                     switch (docWriteRequest.opType()) {
                         case CREATE:
-                        case INDEX:
+                        case INDEX: // 两个校验, 都和data stream有关
                             prohibitAppendWritesInBackingIndices(docWriteRequest, metadata);
                             prohibitCustomRoutingOnDataStream(docWriteRequest, metadata);
                             IndexRequest indexRequest = (IndexRequest) docWriteRequest;
@@ -599,12 +599,12 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
                 String concreteIndex = concreteIndices.getConcreteIndex(request.index()).getName();
                 ShardId shardId = clusterService.operationRouting()
                     .indexShards(clusterState, concreteIndex, request.id(), request.routing())
-                    .shardId();
+                    .shardId(); // 找到对应的shard
                 List<BulkItemRequest> shardRequests = requestsByShard.computeIfAbsent(shardId, shard -> new ArrayList<>());
                 shardRequests.add(new BulkItemRequest(i, request));
             }
 
-            if (requestsByShard.isEmpty()) {
+            if (requestsByShard.isEmpty()) { //没有要 直接返回
                 listener.onResponse(
                     new BulkResponse(responses.toArray(new BulkItemResponse[responses.length()]), buildTookInMillis(startTimeNanos))
                 );
@@ -613,10 +613,10 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
 
             final AtomicInteger counter = new AtomicInteger(requestsByShard.size());
             String nodeId = clusterService.localNode().getId();
-            for (Map.Entry<ShardId, List<BulkItemRequest>> entry : requestsByShard.entrySet()) {
+            for (Map.Entry<ShardId, List<BulkItemRequest>> entry : requestsByShard.entrySet()) { // 给每个shard发送请求
                 final ShardId shardId = entry.getKey();
                 final List<BulkItemRequest> requests = entry.getValue();
-                BulkShardRequest bulkShardRequest = new BulkShardRequest(
+                BulkShardRequest bulkShardRequest = new BulkShardRequest( // 封装成 BulkShardRequest
                     shardId,
                     bulkRequest.getRefreshPolicy(),
                     requests.toArray(new BulkItemRequest[requests.size()])
@@ -633,7 +633,7 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
                     shardId,
                     bulkShardRequest.ramBytesUsed(),
                     isOnlySystem
-                );
+                ); // 交给 TransportShardBulkAction 执行 // 执行逻辑在父类TransportReplicationAction
                 shardBulkAction.execute(bulkShardRequest, ActionListener.runBefore(new ActionListener<BulkShardResponse>() {
                     @Override
                     public void onResponse(BulkShardResponse bulkShardResponse) {

@@ -52,7 +52,7 @@ import java.util.List;
  * {@link ShardRouting} immutably encapsulates information about shard
  * indexRoutings like id, state, version, etc.
  */
-public final class ShardRouting implements Writeable, ToXContentObject { // ShardRouding就对应着外层的shard概念
+public final class ShardRouting implements Writeable, ToXContentObject { // ShardRouting就对应着物理shard概念
 
     /**
      * Used if shard size is not available
@@ -236,10 +236,10 @@ public final class ShardRouting implements Writeable, ToXContentObject { // Shar
     }
 
     /**
-     * The relocating node id the shard is either relocating to or relocating from. // 应该是 from 吧 ?
+     * The relocating node id the shard is either relocating to or relocating from.
      */
-    public String relocatingNodeId() {
-        return this.relocatingNodeId;
+    public String relocatingNodeId() { // 如果 ShardRoutingState 是 relocating, 则是from. 如果是 initializing 则是 to
+        return this.relocatingNodeId; // 如果不是 relocating 状态, 调用得到 null
     }
 
     /**

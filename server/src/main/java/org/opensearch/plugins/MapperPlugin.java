@@ -43,7 +43,7 @@ import java.util.function.Predicate;
 /**
  * An extension point for {@link Plugin} implementations to add custom mappers
  */
-public interface MapperPlugin {
+public interface MapperPlugin { // 允许自定义数据类型
 
     /**
      * Returns additional mapper implementations added by this plugin.

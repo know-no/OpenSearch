@@ -137,9 +137,9 @@ public class MasterService extends AbstractLifecycleComponent {
         taskBatcher = new Batcher(logger, threadPoolExecutor);
     }
 
-    protected PrioritizedOpenSearchThreadPoolExecutor createThreadPoolExecutor() {
+    protected PrioritizedOpenSearchThreadPoolExecutor createThreadPoolExecutor() { // 创建单线程来处理 master 任务
         return OpenSearchExecutors.newSinglePrioritizing(
-            nodeName + "/" + MASTER_UPDATE_THREAD_NAME,
+            nodeName + "/" + MASTER_UPDATE_THREAD_NAME,  // "masterService#updateTask"
             daemonThreadFactory(nodeName, MASTER_UPDATE_THREAD_NAME),
             threadPool.getThreadContext(),
             threadPool.scheduler()
@@ -907,10 +907,10 @@ public class MasterService extends AbstractLifecycleComponent {
                 .stream()
                 .map(e -> taskBatcher.new UpdateTask(config.priority(), source, e.getKey(), safe(e.getValue(), supplier), executor))
                 .collect(Collectors.toList());
-            taskBatcher.submitTasks(safeTasks, config.timeout());
-        } catch (OpenSearchRejectedExecutionException e) {
-            // ignore cases where we are shutting down..., there is really nothing interesting
-            // to be done here...
+            taskBatcher.submitTasks(safeTasks, config.timeout()); // 提交任务, 有专门的线程调度. Batcher.UpdateTask.run->runIfNotProcessed
+        } catch (OpenSearchRejectedExecutionException e) { // runIfNotProcessed-> TaskBatcher.run() -> Batcher.run ->
+            // ignore cases where we are shutting down..., there is really nothing interesting //MasterService.runTasks
+            // to be done here...                                       // runTasks -> publish集群状态发布,进入二阶段
             if (!lifecycle.stoppedOrClosed()) {
                 throw e;
             }

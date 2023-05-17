@@ -47,7 +47,7 @@ public interface AckedClusterStateTaskListener extends ClusterStateTaskListener 
      * @param discoveryNode a node
      * @return true if the node is expected to send ack back, false otherwise
      */
-    boolean mustAck(DiscoveryNode discoveryNode);
+    boolean mustAck(DiscoveryNode discoveryNode); // 给类增加状态
 
     /**
      * Called once all the nodes have acknowledged the cluster state update request. Must be

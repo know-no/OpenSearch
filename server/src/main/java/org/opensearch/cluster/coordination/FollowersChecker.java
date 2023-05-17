@@ -120,7 +120,7 @@ public class FollowersChecker {
 
     private final Object mutex = new Object(); // protects writes to this state; read access does not need sync
     private final Map<DiscoveryNode, FollowerChecker> followerCheckers = newConcurrentMap();
-    private final Set<DiscoveryNode> faultyNodes = new HashSet<>();
+    private final Set<DiscoveryNode> faultyNodes = new HashSet<>(); // todo? what is faulty
 
     private final TransportService transportService;
     private final NodeHealthService nodeHealthService;
@@ -179,12 +179,12 @@ public class FollowersChecker {
             faultyNodes.removeIf(isUnknownNode);
 
             discoveryNodes.mastersFirstStream().forEach(discoveryNode -> {
-                if (discoveryNode.equals(discoveryNodes.getLocalNode()) == false
-                    && followerCheckers.containsKey(discoveryNode) == false
-                    && faultyNodes.contains(discoveryNode) == false) {
+                if (discoveryNode.equals(discoveryNodes.getLocalNode()) == false // 非本地节点
+                    && followerCheckers.containsKey(discoveryNode) == false // 不再follower checker 的检测列表里的
+                    && faultyNodes.contains(discoveryNode) == false) { // 且不在 faulty nodes 中的
 
                     final FollowerChecker followerChecker = new FollowerChecker(discoveryNode);
-                    followerCheckers.put(discoveryNode, followerChecker);
+                    followerCheckers.put(discoveryNode, followerChecker); // 补进 follower checker的检测列表
                     followerChecker.start();
                 }
             });

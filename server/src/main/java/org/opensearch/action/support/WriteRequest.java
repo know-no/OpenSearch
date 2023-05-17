@@ -75,19 +75,19 @@ public interface WriteRequest<R extends WriteRequest<R>> extends Writeable {
 
     enum RefreshPolicy implements Writeable {
         /**
-         * Don't refresh after this request. The default.
+         * Don't refresh after this request. The default. // 默认直接返回, 所以再根据默认的1s refresh间隔,约1s后才能被搜到
          */
-        NONE("false"),
+        NONE("false"), // 操作延时短、资源消耗低 , 缺点就是: 实时性不高
         /**
          * Force a refresh as part of this request. This refresh policy does not scale for high indexing or search throughput but is useful
          * to present a consistent view to for indices with very low traffic. And it is wonderful for tests!
-         */
-        IMMEDIATE("true"),
+         */ // 实时性很高, 操作时延小, 但是资源消耗相对大
+        IMMEDIATE("true"), // 用来做测试非常好, 立刻对请求进行refresh
         /**
          * Leave this request open until a refresh has made the contents of this request visible to search. This refresh policy is
          * compatible with high indexing and search throughput but it causes the request to wait to reply until a refresh occurs.
-         */
-        WAIT_UNTIL("wait_for");
+         */ // 实时性高、操作延时长。资源消耗相对小
+        WAIT_UNTIL("wait_for"); // 不要返回给用户, 直到有一个refresh操作, 使得这个请求的内容能够被搜索, 在返回给用户
 
         private final String value;
 

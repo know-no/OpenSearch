@@ -166,13 +166,13 @@ public class ClusterState implements ToXContentFragment, Diffable<ClusterState> 
 
     public static final long UNKNOWN_VERSION = -1;
 
-    private final long version;
+    private final long version; // 集群状态version, 除了term以外, 用作判断节点能否拉票. 如果一些节点因为网络分区,而term很大,而参加选主,就糟糕了, 所以还得看version大小
 
     private final String stateUUID;
 
     private final RoutingTable routingTable;
 
-    private final DiscoveryNodes nodes;
+    private final DiscoveryNodes nodes; // 集群里的所有节点
 
     private final Metadata metadata;
 

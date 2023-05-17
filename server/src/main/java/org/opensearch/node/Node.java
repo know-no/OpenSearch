@@ -735,7 +735,7 @@ public class Node implements Closeable {
                 settingsModule.getClusterSettings(),
                 taskHeaders
             );
-            final GatewayMetaState gatewayMetaState = new GatewayMetaState();
+            final GatewayMetaState gatewayMetaState = new GatewayMetaState(); // gateway模块, 管理元数据
             final ResponseCollectorService responseCollectorService = new ResponseCollectorService(clusterService);
             final SearchTransportService searchTransportService = new SearchTransportService(
                 transportService,
@@ -1042,8 +1042,8 @@ public class Node implements Closeable {
         clusterService.setNodeConnectionsService(nodeConnectionsService);
 
         injector.getInstance(GatewayService.class).start();
-        Discovery discovery = injector.getInstance(Discovery.class);
-        clusterService.getMasterService().setClusterStatePublisher(discovery::publish);
+        Discovery discovery = injector.getInstance(Discovery.class); // Coordinator 默认
+        clusterService.getMasterService().setClusterStatePublisher(discovery::publish); //...可以直接setDiscovery的
 
         // Start the transport service now so the publish address will be added to the local disco node in ClusterService
         TransportService transportService = injector.getInstance(TransportService.class);
@@ -1095,13 +1095,13 @@ public class Node implements Closeable {
         );
 
         clusterService.addStateApplier(transportService.getTaskManager());
-        // start after transport service so the local disco is known
+        // start after transport service so the local disco is known  // discovery 比如可能是: Coordinator
         discovery.start(); // start before cluster service so that it can set initial state on ClusterApplierService
         clusterService.start();
         assert clusterService.localNode().equals(localNodeFactory.getNode())
             : "clusterService has a different local node than the factory provided";
-        transportService.acceptIncomingRequests();
-        discovery.startInitialJoin();
+        transportService.acceptIncomingRequests(); //
+        discovery.startInitialJoin(); // discovery.start()是初始化资源, 现在开始进入选举,加入集群的流程
         final TimeValue initialStateTimeout = DiscoverySettings.INITIAL_STATE_TIMEOUT_SETTING.get(settings());
         configureNodeAndClusterIdStateListener(clusterService);
 

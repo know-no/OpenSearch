@@ -3221,9 +3221,9 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
         verifyNotClosed();
         assert shardRouting.primary() : "acquirePrimaryOperationPermit should only be called on primary shard: " + shardRouting;
 
-        indexShardOperationPermits.acquire(
-            wrapPrimaryOperationPermitListener(onPermitAcquired),
-            executorOnDelay,
+        indexShardOperationPermits.acquire( //如果获得了, listener会立刻执行, 否则, 会放到executorOnDelay里执行
+            wrapPrimaryOperationPermitListener(onPermitAcquired), // 其实就是获取一个操作shard的permit,执行完就释放
+            executorOnDelay, // 执行什么, 还得看 onPermitAcquired
             forceExecution,
             debugInfo
         );
@@ -3250,7 +3250,7 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
     private ActionListener<Releasable> wrapPrimaryOperationPermitListener(final ActionListener<Releasable> listener) {
         return ActionListener.delegateFailure(listener, (l, r) -> {
             if (replicationTracker.isPrimaryMode()) {
-                l.onResponse(r);
+                l.onResponse(r); // l 就是 listener 参数, r是 response
             } else {
                 r.close();
                 l.onFailure(new ShardNotInPrimaryModeException(shardId, state));
@@ -3569,11 +3569,11 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
      * one thread blocking on the sync an all others can continue indexing.
      * NOTE: if the syncListener throws an exception when it's processed the exception will only be logged. Users should make sure that the
      * listener handles all exception cases internally.
-     */
-    public final void sync(Translog.Location location, Consumer<Exception> syncListener) {
-        verifyNotClosed();
-        translogSyncProcessor.put(location, syncListener);
-    }
+     */ // 重要: 同步translog, 并且立刻返回, 即: 可能并没有被force sync, 就返回了. 只有 sync listener被调用了, 才是一定被sync了. 并且除非有其他
+    public final void sync(Translog.Location location, Consumer<Exception> syncListener) { // 线程已经把所有等待的fsync log同步了,
+        verifyNotClosed();      // 那这个线程就会被劫持, 去运行 fsync, 来为所有等待的fsync operation执行fsync. 这样index线程就可以继续index
+        translogSyncProcessor.put(location, syncListener); // 可以保证, 永远最多只有一个index线程被占有做fsync操作
+    }                                                      // 最后, 如果 listener 抛出了异常, 异常仅会被记录, 用户需要在自行处理
 
     public void sync() throws IOException {
         verifyNotClosed();

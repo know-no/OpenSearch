@@ -148,10 +148,10 @@ public class TransportNodesListGatewayStartedShards extends TransportNodesAction
         try {
             final ShardId shardId = request.getShardId();
             logger.trace("{} loading local shard state info", shardId);
-            ShardStateMetadata shardStateMetadata = ShardStateMetadata.FORMAT.loadLatestState(
+            ShardStateMetadata shardStateMetadata = ShardStateMetadata.FORMAT.loadLatestState( // 从持久化存储获取
                 logger,
                 namedXContentRegistry,
-                nodeEnv.availableShardPaths(request.shardId)
+                nodeEnv.availableShardPaths(request.shardId) // 找到持久化存储的 shard的元数据的目录
             );
             if (shardStateMetadata != null) {
                 if (indicesService.getShardOrNull(shardId) == null) {
@@ -172,12 +172,12 @@ public class TransportNodesListGatewayStartedShards extends TransportNodesAction
                     // we don't have an open shard on the store, validate the files on disk are openable
                     ShardPath shardPath = null;
                     try {
-                        shardPath = ShardPath.loadShardPath(logger, nodeEnv, shardId, customDataPath);
+                        shardPath = ShardPath.loadShardPath(logger, nodeEnv, shardId, customDataPath); // 找到shard的路径
                         if (shardPath == null) {
                             throw new IllegalStateException(shardId + " no shard path found");
                         }
-                        Store.tryOpenIndex(shardPath.resolveIndex(), shardId, nodeEnv::shardLock, logger);
-                    } catch (Exception exception) {
+                        Store.tryOpenIndex(shardPath.resolveIndex(), shardId, nodeEnv::shardLock, logger); // 尝试锁住
+                    } catch (Exception exception) {                                             // 读取段信息
                         final ShardPath finalShardPath = shardPath;
                         logger.trace(
                             () -> new ParameterizedMessage(

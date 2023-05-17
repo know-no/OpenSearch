@@ -42,7 +42,7 @@ public final class ContentPath {
 
     private int index = 0;
 
-    private String[] path = new String[10];
+    private String[] path = new String[10]; //
 
     public ContentPath() {
         this(0);

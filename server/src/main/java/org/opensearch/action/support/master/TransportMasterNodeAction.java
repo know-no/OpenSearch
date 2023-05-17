@@ -203,7 +203,7 @@ public abstract class TransportMasterNodeAction<Request extends MasterNodeReques
                     } else {
                         DiscoveryNode masterNode = nodes.getMasterNode();
                         final String actionName = getMasterActionName(masterNode);
-                        transportService.sendRequest(
+                        transportService.sendRequest( // 把任务发送到master节点
                             masterNode,
                             actionName,
                             request,

@@ -217,7 +217,7 @@ public abstract class TransportWriteAction<
         threadPool.executor(executor).execute(new ActionRunnable<PrimaryResult<ReplicaRequest, Response>>(listener) {
             @Override
             protected void doRun() {
-                dispatchedShardOperationOnPrimary(request, primary, listener);
+                dispatchedShardOperationOnPrimary(request, primary, listener); // 在专有的线程池里, 分发写操作
             }
 
             @Override
@@ -417,7 +417,7 @@ public abstract class TransportWriteAction<
             boolean waitUntilRefresh = false;
             switch (request.getRefreshPolicy()) {
                 case IMMEDIATE:
-                    indexShard.refresh("refresh_flag_index");
+                    indexShard.refresh("refresh_flag_index"); // 立刻触发 refresh,并且重新打开, 让可搜
                     refreshed.set(true);
                     break;
                 case WAIT_UNTIL:
@@ -431,11 +431,11 @@ public abstract class TransportWriteAction<
                 default:
                     throw new IllegalArgumentException("unknown refresh policy: " + request.getRefreshPolicy());
             }
-            this.waitUntilRefresh = waitUntilRefresh;
+            this.waitUntilRefresh = waitUntilRefresh; // 貌似,是等到自动的refresh之后, 才给用户返回
             this.respond = respond;
             this.location = location;
             if ((sync = indexShard.getTranslogDurability() == Translog.Durability.REQUEST && location != null)) {
-                pendingOps.incrementAndGet();
+                pendingOps.incrementAndGet(); // 如果sync 是 REQUEST 级别的, 并且也有location // 设置 sync的值
             }
             this.logger = logger;
             assert pendingOps.get() >= 0 && pendingOps.get() <= 3 : "pendingOpts was: " + pendingOps.get();
@@ -458,22 +458,22 @@ public abstract class TransportWriteAction<
             /*
              * We either respond immediately (i.e., if we do not fsync per request or wait for
              * refresh), or we there are past async operations and we wait for them to return to
-             * respond.
+             * respond. // 要么立刻响应, 要么等待asycn操作完成在返回
              */
-            indexShard.afterWriteOperation();
+            indexShard.afterWriteOperation(); // 安排一次 flush, 但不是立刻执行
             // decrement pending by one, if there is nothing else to do we just respond with success
-            maybeFinish();
+            maybeFinish();// pending 最多是3, 假设是: WAIT_UNTIL + Translog.Durability.REQUEST
             if (waitUntilRefresh) {
-                assert pendingOps.get() > 0;
+                assert pendingOps.get() > 0; // addRefreshListener, 让shard refresh之后, 才给用户返回
                 indexShard.addRefreshListener(location, forcedRefresh -> {
                     if (forcedRefresh) {
                         logger.warn("block until refresh ran out of slots and forced a refresh: [{}]", request);
                     }
                     refreshed.set(forcedRefresh);
-                    maybeFinish();
+                    maybeFinish(); // Niubi
                 });
             }
-            if (sync) {
+            if (sync) { // 需要 Request 级别的同步tranlog
                 assert pendingOps.get() > 0;
                 indexShard.sync(location, (ex) -> {
                     syncFailure.set(ex);

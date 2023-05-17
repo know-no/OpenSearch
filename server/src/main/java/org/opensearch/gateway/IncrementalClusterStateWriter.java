@@ -125,10 +125,10 @@ public class IncrementalClusterStateWriter {
         final long startTimeMillis = relativeTimeMillisSupplier.getAsLong();
 
         final AtomicClusterStateWriter writer = new AtomicClusterStateWriter(metaStateService, previousManifest);
-        long globalStateGeneration = writeGlobalState(writer, newMetadata);
-        Map<Index, Long> indexGenerations = writeIndicesMetadata(writer, newState);
+        long globalStateGeneration = writeGlobalState(writer, newMetadata); // 写入全局状态
+        Map<Index, Long> indexGenerations = writeIndicesMetadata(writer, newState); // 写入索引状态
         Manifest manifest = new Manifest(previousManifest.getCurrentTerm(), newState.version(), globalStateGeneration, indexGenerations);
-        writeManifest(writer, manifest);
+        writeManifest(writer, manifest); // 写入元数据的入口文件
         previousManifest = manifest;
         previousClusterState = newState;
 
@@ -183,7 +183,7 @@ public class IncrementalClusterStateWriter {
 
     private long writeGlobalState(AtomicClusterStateWriter writer, Metadata newMetadata) throws WriteStateException {
         if (incrementalWrite == false || Metadata.isGlobalStateEquals(previousClusterState.metadata(), newMetadata) == false) {
-            return writer.writeGlobalState("changed", newMetadata);
+            return writer.writeGlobalState("changed", newMetadata); // 只要增量写, 或者数据有变
         }
         return previousManifest.getGlobalGeneration();
     }
@@ -293,7 +293,7 @@ public class IncrementalClusterStateWriter {
 
         long writeGlobalState(String reason, Metadata metadata) throws WriteStateException {
             assert finished == false : FINISHED_MSG;
-            try {
+            try { // 1. 设置回滚清理 2. 写入 3. 设置提交清理  两个清理的区别是: 1 会删除previousManifest之前的提交记录 3. 是提交成功的,会删除此次提交之前的记录, 包括previousManifest
                 rollbackCleanupActions.add(() -> metaStateService.cleanupGlobalState(previousManifest.getGlobalGeneration()));
                 long generation = metaStateService.writeGlobalState(reason, metadata);
                 commitCleanupActions.add(() -> metaStateService.cleanupGlobalState(generation));

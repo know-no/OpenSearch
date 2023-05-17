@@ -221,7 +221,7 @@ public class SeedHostsResolver extends AbstractLifecycleComponent implements Con
     }
 
     @Override
-    protected void doStart() {
+    protected void doStart() { // 只是创建了一个线程池
         logger.debug("using max_concurrent_resolvers [{}], resolver timeout [{}]", concurrentConnects, resolveTimeout);
         final ThreadFactory threadFactory = OpenSearchExecutors.daemonThreadFactory(settings, "[unicast_configured_hosts_resolver]");
         executorService.set(
@@ -232,7 +232,7 @@ public class SeedHostsResolver extends AbstractLifecycleComponent implements Con
                 60,
                 TimeUnit.SECONDS,
                 threadFactory,
-                transportService.getThreadPool().getThreadContext()
+                transportService.getThreadPool().getThreadContext() // 使用传输服务的线程上下文类
             )
         );
     }

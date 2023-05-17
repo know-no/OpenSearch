@@ -148,7 +148,7 @@ public class GatewayAllocator implements ExistingShardsAllocator {
         assert replicaShardAllocator != null;
         if (allocation.routingNodes().hasInactiveShards()) {
             // cancel existing recoveries if we have a better match
-            replicaShardAllocator.processExistingRecoveries(allocation);
+            replicaShardAllocator.processExistingRecoveries(allocation); // todo?
         }
     }
 
@@ -285,14 +285,14 @@ public class GatewayAllocator implements ExistingShardsAllocator {
                     IndexMetadata.INDEX_DATA_PATH_SETTING.get(allocation.metadata().index(shard.index()).getSettings()),
                     startedAction
                 )
-            );
+            ); // 会调用 TransportNodesAction 从各个节点获取 shard 在各节点的存储数据情况, 包括元信息
             AsyncShardFetch.FetchResult<TransportNodesListGatewayStartedShards.NodeGatewayStartedShards> shardState = fetch.fetchData(
                 allocation.nodes(),
                 allocation.getIgnoreNodes(shard.shardId())
             );
 
-            if (shardState.hasData()) {
-                shardState.processAllocation(allocation);
+            if (shardState.hasData()) { // 拿到了shard在node上的元信息, 和 数据是否完整等定西
+                shardState.processAllocation(allocation); //
             }
             return shardState;
         }

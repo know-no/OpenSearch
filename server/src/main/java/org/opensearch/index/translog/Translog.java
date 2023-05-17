@@ -135,7 +135,7 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
     protected final ReleasableLock readLock;
     protected final ReleasableLock writeLock;
     private final Path location;
-    private TranslogWriter current;
+    private TranslogWriter current; // 真正的translog写入
 
     protected final TragicExceptionHolder tragedy = new TragicExceptionHolder();
     private final AtomicBoolean closed = new AtomicBoolean();

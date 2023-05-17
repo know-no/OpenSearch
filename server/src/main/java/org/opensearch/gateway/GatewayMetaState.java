@@ -93,7 +93,7 @@ import static org.opensearch.common.util.concurrent.OpenSearchExecutors.daemonTh
  * ClusterState#metadata()} because it might be stale or incomplete. Master-eligible nodes must perform an election to find a complete and
  * non-stale state, and master-ineligible nodes receive the real cluster state from the elected master after joining the cluster.
  */
-public class GatewayMetaState implements Closeable {
+public class GatewayMetaState implements Closeable { // 负责接收集群的状态
 
     /**
      * Fake node ID for a voting configuration written by a master-ineligible data node to indicate that its on-disk state is potentially
@@ -134,7 +134,7 @@ public class GatewayMetaState implements Closeable {
                     new NodeMetadata(persistedClusterStateService.getNodeId(), Version.CURRENT),
                     persistedClusterStateService.getDataPaths()
                 );
-                manifestClusterStateTuple = metaStateService.loadFullState();
+                manifestClusterStateTuple = metaStateService.loadFullState(); // metaStateService
             } catch (IOException e) {
                 throw new UncheckedIOException(e);
             }
@@ -154,20 +154,20 @@ public class GatewayMetaState implements Closeable {
 
             if (DiscoveryNode.isMasterNode(settings) || DiscoveryNode.isDataNode(settings)) {
                 clusterService.addLowPriorityApplier(new GatewayClusterApplier(incrementalClusterStateWriter));
-            }
+            } // GatewayClusterApplier是低优先级任务
             persistedState.set(new InMemoryPersistedState(manifestClusterStateTuple.v1().getCurrentTerm(), clusterState));
             return;
         }
 
         if (DiscoveryNode.isMasterNode(settings) || DiscoveryNode.isDataNode(settings)) {
-            try {
+            try { // 如果是master-eligible, data节点, 则优先从磁盘获取状态太
                 final PersistedClusterStateService.OnDiskState onDiskState = persistedClusterStateService.loadBestOnDiskState();
 
                 Metadata metadata = onDiskState.metadata;
                 long lastAcceptedVersion = onDiskState.lastAcceptedVersion;
                 long currentTerm = onDiskState.currentTerm;
 
-                if (onDiskState.empty()) {
+                if (onDiskState.empty()) { // 可能是版本低于7.x
                     assert Version.CURRENT.major <= LegacyESVersion.V_7_0_0.major + 1
                         : "legacy metadata loader is not needed anymore from v9 onwards";
                     final Tuple<Manifest, Metadata> legacyState = metaStateService.loadFullState();
@@ -190,16 +190,16 @@ public class GatewayMetaState implements Closeable {
                             .build()
                     );
 
-                    if (DiscoveryNode.isMasterNode(settings)) {
+                    if (DiscoveryNode.isMasterNode(settings)) { // 主节点同步刷
                         persistedState = new LucenePersistedState(persistedClusterStateService, currentTerm, clusterState);
                     } else {
-                        persistedState = new AsyncLucenePersistedState(
+                        persistedState = new AsyncLucenePersistedState( // 数据节点异步刷
                             settings,
                             transportService.getThreadPool(),
                             new LucenePersistedState(persistedClusterStateService, currentTerm, clusterState)
                         );
                     }
-                    if (DiscoveryNode.isDataNode(settings)) {
+                    if (DiscoveryNode.isDataNode(settings)) { // todo?
                         metaStateService.unreferenceAll(); // unreference legacy files (only keep them for dangling indices functionality)
                     } else {
                         metaStateService.deleteAll(); // delete legacy files
@@ -233,7 +233,7 @@ public class GatewayMetaState implements Closeable {
                 }
                 try {
                     // delete legacy cluster state files
-                    metaStateService.deleteAll();
+                    metaStateService.deleteAll(); // 删除旧的状态文件, 必须写入新的节点状态文件, 防止节点传播空状态
                     // write legacy node metadata to prevent downgrades from spawning empty cluster state
                     NodeMetadata.FORMAT.writeAndCleanup(
                         new NodeMetadata(persistedClusterStateService.getNodeId(), Version.CURRENT),
@@ -326,7 +326,7 @@ public class GatewayMetaState implements Closeable {
         return false;
     }
 
-    private static class GatewayClusterApplier implements ClusterStateApplier {
+    private static class GatewayClusterApplier implements ClusterStateApplier { // 集群状态变更应用器: 由ClusterApplierService统一调用
 
         private static final Logger logger = LogManager.getLogger(GatewayClusterApplier.class);
 

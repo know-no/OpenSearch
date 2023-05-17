@@ -34,10 +34,10 @@ package org.opensearch.cluster.block;
 
 import java.util.EnumSet;
 
-public enum ClusterBlockLevel { // 集群级别的
-    READ,
+public enum ClusterBlockLevel { // 集群级别的阻塞操作
+    READ, // 阻塞读
     WRITE,
-    METADATA_READ,
+    METADATA_READ, // 阻塞读取元信息
     METADATA_WRITE;
 
     public static final EnumSet<ClusterBlockLevel> ALL = EnumSet.allOf(ClusterBlockLevel.class);

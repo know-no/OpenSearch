@@ -139,21 +139,21 @@ public abstract class AsyncShardFetch<T extends BaseNodeResponse> implements Rel
         if (nodesToFetch.isEmpty() == false) {
             // mark all node as fetching and go ahead and async fetch them
             // use a unique round id to detect stale responses in processAsyncFetch
-            final long fetchingRound = round.incrementAndGet();
+            final long fetchingRound = round.incrementAndGet(); // new round
             for (NodeEntry<T> nodeEntry : nodesToFetch) {
-                nodeEntry.markAsFetching(fetchingRound);
+                nodeEntry.markAsFetching(fetchingRound); // 改标, 标识正在 fetching
             }
             DiscoveryNode[] discoNodesToFetch = nodesToFetch.stream()
                 .map(NodeEntry::getNodeId)
                 .map(nodes::get)
                 .toArray(DiscoveryNode[]::new);
-            asyncFetch(discoNodesToFetch, fetchingRound);
+            asyncFetch(discoNodesToFetch, fetchingRound); // 调用 fetch
         }
 
         // if we are still fetching, return null to indicate it
         if (hasAnyNodeFetching(cache)) {
-            return new FetchResult<>(shardId, null, emptySet());
-        } else {
+            return new FetchResult<>(shardId, null, emptySet()); // data 为null, 标识还在fetching
+        } else {                                                       // 只要fetched, data肯定不为null, HashMap
             // nothing to fetch, yay, build the return value
             Map<DiscoveryNode, T> fetchData = new HashMap<>();
             Set<String> failedNodes = new HashSet<>();
@@ -182,7 +182,7 @@ public abstract class AsyncShardFetch<T extends BaseNodeResponse> implements Rel
             nodesToIgnore.clear();
             // if at least one node failed, make sure to have a protective reroute
             // here, just case this round won't find anything, and we need to retry fetching data
-            if (failedNodes.isEmpty() == false || allIgnoreNodes.isEmpty() == false) {
+            if (failedNodes.isEmpty() == false || allIgnoreNodes.isEmpty() == false) { // 有失败的. 保险起见, 发起一次完整的reroute任务
                 reroute(shardId, "nodes failed [" + failedNodes.size() + "], ignored [" + allIgnoreNodes.size() + "]");
             }
             return new FetchResult<>(shardId, fetchData, allIgnoreNodes);
@@ -300,7 +300,7 @@ public abstract class AsyncShardFetch<T extends BaseNodeResponse> implements Rel
             }
         }
         // remove nodes that are not longer part of the data nodes set
-        shardCache.keySet().removeIf(nodeId -> !nodes.nodeExists(nodeId));
+        shardCache.keySet().removeIf(nodeId -> !nodes.nodeExists(nodeId)); // 不用向不是data节点的节点发起拉取
     }
 
     /**
@@ -336,7 +336,7 @@ public abstract class AsyncShardFetch<T extends BaseNodeResponse> implements Rel
     void asyncFetch(final DiscoveryNode[] nodes, long fetchingRound) {
         logger.trace("{} fetching [{}] from {}", shardId, type, nodes);
         action.list(shardId, customDataPath, nodes, new ActionListener<BaseNodesResponse<T>>() {
-            @Override
+            @Override // 成功获取, 回调以填充数据, 如果耗时太长等情况, 可能数据过期, 就会放弃填充
             public void onResponse(BaseNodesResponse<T> response) {
                 processAsyncFetch(response.getNodes(), response.failures(), fetchingRound);
             }
@@ -454,7 +454,7 @@ public abstract class AsyncShardFetch<T extends BaseNodeResponse> implements Rel
         }
 
         boolean hasData() {
-            return valueSet || failure != null;
+            return valueSet || failure != null; // 有数据, 或者 有failure
         }
 
         Throwable getFailure() {

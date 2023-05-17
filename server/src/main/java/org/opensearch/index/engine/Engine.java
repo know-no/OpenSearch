@@ -1387,7 +1387,7 @@ public abstract class Engine implements Closeable {
         }
     }
 
-    public abstract static class Operation {
+    public abstract static class Operation { // 抽象的操作,
 
         /** type of operation (index, delete), subclasses use static types */
         public enum TYPE {

@@ -80,11 +80,11 @@ public abstract class Publication {
         logger.trace("publishing {} to {}", publishRequest, publicationTargets);
 
         for (final DiscoveryNode faultyNode : faultyNodes) {
-            onFaultyNode(faultyNode);
+            onFaultyNode(faultyNode); //  每个待通知对象, 本地jvm里的对象, 每个都要感知到faultnode
         }
         onPossibleCommitFailure();
-        publicationTargets.forEach(PublicationTarget::sendPublishRequest);
-    }
+        publicationTargets.forEach(PublicationTarget::sendPublishRequest);  // 发送请求 , 并且注册监听器, 监听节点的返回, 如果
+    }                                           // 过半节点, 确认返回, 则说明此次可以提交, 会再次发起提交请求.
 
     public void cancel(String reason) {
         if (isCompleted) {
@@ -103,8 +103,8 @@ public abstract class Publication {
     }
 
     public void onFaultyNode(DiscoveryNode faultyNode) {
-        publicationTargets.forEach(t -> t.onFaultyNode(faultyNode));
-        onPossibleCompletion();
+        publicationTargets.forEach(t -> t.onFaultyNode(faultyNode)); // 无论如何写法很奇怪, 两次循环, 复杂度高
+        onPossibleCompletion(); // todo?
     }
 
     public List<DiscoveryNode> completedNodes() {
@@ -122,8 +122,8 @@ public abstract class Publication {
         if (isCompleted) {
             return;
         }
-
-        if (cancelled == false) {
+        // 5. cluster 检查二阶段提交的结果
+        if (cancelled == false) { // 未完成, 且 cancelled 取消, 则发现, 但凡有一个节点还未结束, 就忽略todo
             for (final PublicationTarget target : publicationTargets) {
                 if (target.isActive()) {
                     return;
@@ -135,13 +135,13 @@ public abstract class Publication {
             logger.debug("onPossibleCompletion: [{}] commit failed", this);
             assert isCompleted == false;
             isCompleted = true;
-            onCompletion(false);
+            onCompletion(false); // 失败, 二阶段还未开始提交; 进入后处理阶段
             return;
         }
 
         assert isCompleted == false;
-        isCompleted = true;
-        onCompletion(true);
+        isCompleted = true; // publication 成功了, 设置为true
+        onCompletion(true); // 进入 二阶段完成阶段: NOTICE: 是master节点进入二阶段的完成阶段
         assert applyCommitRequest.isPresent();
         logger.trace("onPossibleCompletion: [{}] was successful", this);
     }
@@ -242,7 +242,7 @@ public abstract class Publication {
         NOT_STARTED,
         FAILED,
         SENT_PUBLISH_REQUEST,
-        WAITING_FOR_QUORUM,
+        WAITING_FOR_QUORUM, // 在master节点使用二阶段提交发送publication后, 进入等待多数节点回复的状态
         SENT_APPLY_COMMIT,
         APPLIED_COMMIT,
     }
@@ -271,23 +271,23 @@ public abstract class Publication {
             }
             assert state == PublicationTargetState.NOT_STARTED : state + " -> " + PublicationTargetState.SENT_PUBLISH_REQUEST;
             state = PublicationTargetState.SENT_PUBLISH_REQUEST;
-            Publication.this.sendPublishRequest(discoveryNode, publishRequest, new PublishResponseHandler());
+            Publication.this.sendPublishRequest(discoveryNode, publishRequest, new PublishResponseHandler());// 回调和监听
             assert publicationCompletedIffAllTargetsInactiveOrCancelled();
         }
 
         void handlePublishResponse(PublishResponse publishResponse) {
             assert isWaitingForQuorum() : this;
             logger.trace("handlePublishResponse: handling [{}] from [{}])", publishResponse, discoveryNode);
-            if (applyCommitRequest.isPresent()) {
-                sendApplyCommit();
+            if (applyCommitRequest.isPresent()) { // 处理单独某个节点的回复 即少数派发送的回复,  多数派在 applyCommitRequest.ispresent()
+                sendApplyCommit();              // 就一起向所有多数派节点发送了 applyCommitRequest
             } else {
                 try {
                     Publication.this.handlePublishResponse(discoveryNode, publishResponse).ifPresent(applyCommit -> {
                         assert applyCommitRequest.isPresent() == false;
-                        applyCommitRequest = Optional.of(applyCommit);
+                        applyCommitRequest = Optional.of(applyCommit); // 设置提交请求
                         ackListener.onCommit(TimeValue.timeValueMillis(currentTimeSupplier.getAsLong() - startTime));
                         publicationTargets.stream()
-                            .filter(PublicationTarget::isWaitingForQuorum)
+                            .filter(PublicationTarget::isWaitingForQuorum) //向 每个多数派节点发送提交请求
                             .forEach(PublicationTarget::sendApplyCommit);
                     });
                 } catch (Exception e) {
@@ -300,7 +300,7 @@ public abstract class Publication {
         void sendApplyCommit() {
             assert state == PublicationTargetState.WAITING_FOR_QUORUM : state + " -> " + PublicationTargetState.SENT_APPLY_COMMIT;
             state = PublicationTargetState.SENT_APPLY_COMMIT;
-            assert applyCommitRequest.isPresent();
+            assert applyCommitRequest.isPresent(); // 3 cluster 发送二阶段的提交请求. 并且注册回调: 当多数派提交后......
             Publication.this.sendApplyCommit(discoveryNode, applyCommitRequest.get(), new ApplyCommitResponseHandler());
             assert publicationCompletedIffAllTargetsInactiveOrCancelled();
         }
@@ -368,7 +368,7 @@ public abstract class Publication {
                     return;
                 }
 
-                if (response.getJoin().isPresent()) {
+                if (response.getJoin().isPresent()) { // 处理加入? todo 加入不是很早就就做的吗?应该
                     final Join join = response.getJoin().get();
                     assert discoveryNode.equals(join.getSourceNode());
                     assert join.getTerm() == response.getPublishResponse().getTerm() : response;
@@ -403,12 +403,12 @@ public abstract class Publication {
 
             @Override
             public void onResponse(TransportResponse.Empty ignored) {
-                if (isFailed()) {
+                if (isFailed()) { // 可能由于网络的问题? 多回复了?
                     logger.debug("ApplyCommitResponseHandler.handleResponse: already failed, ignoring response from [{}]", discoveryNode);
                     return;
                 }
-                setAppliedCommit();
-                onPossibleCompletion();
+                setAppliedCommit(); // 改状态
+                onPossibleCompletion(); // 4. cluster 查看多数派最后的提交结果
                 assert publicationCompletedIffAllTargetsInactiveOrCancelled();
             }
 

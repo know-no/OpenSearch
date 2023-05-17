@@ -335,7 +335,7 @@ public class ClusterApplierService extends AbstractLifecycleComponent implements
     }
 
     @Override
-    public void onNewClusterState(
+    public void onNewClusterState( // 当集群的状态可以安全的应用的时候, 调用此方法. 在目前的实现里是 二阶段成功之后
         final String source,
         final Supplier<ClusterState> clusterStateSupplier,
         final ClusterApplyListener listener
@@ -345,11 +345,11 @@ public class ClusterApplierService extends AbstractLifecycleComponent implements
             if (nextState != null) {
                 return nextState;
             } else {
-                return currentState;
+                return currentState; // Void->I 成了 I -> I
             }
         };
         submitStateUpdateTask(source, ClusterStateTaskConfig.build(Priority.HIGH), applyFunction, listener);
-    }
+    }   // 状态更新任务
 
     private void submitStateUpdateTask(
         final String source,
@@ -364,14 +364,14 @@ public class ClusterApplierService extends AbstractLifecycleComponent implements
         final Supplier<ThreadContext.StoredContext> supplier = threadContext.newRestorableContext(true);
         try (ThreadContext.StoredContext ignore = threadContext.stashContext()) {
             threadContext.markAsSystemContext();
-            final UpdateTask updateTask = new UpdateTask(
+            final UpdateTask updateTask = new UpdateTask( // UpdateTask 是一个 ClusterState -> ClusterState的函数
                 config.priority(),
                 source,
                 new SafeClusterApplyListener(listener, supplier, logger),
                 executor
             );
             if (config.timeout() != null) {
-                threadPoolExecutor.execute(
+                threadPoolExecutor.execute( // 线程执行器 会执行这个任务; 而各个节点 应用元数据 变更的调用和操作, 都在UpdateTask的 runTask中
                     updateTask,
                     config.timeout(),
                     () -> threadPool.generic()
@@ -423,14 +423,14 @@ public class ClusterApplierService extends AbstractLifecycleComponent implements
         }
 
         logger.debug("processing [{}]: execute", task.source);
-        final ClusterState previousClusterState = state.get();
+        final ClusterState previousClusterState = state.get(); // 前一个 clusterState
 
         long startTimeMS = currentTimeInMillis();
         final StopWatch stopWatch = new StopWatch();
         final ClusterState newClusterState;
         try {
             try (Releasable ignored = stopWatch.timing("running task [" + task.source + ']')) {
-                newClusterState = task.apply(previousClusterState);
+                newClusterState = task.apply(previousClusterState); // 如果有更新ClusterState, 则会返回新的
             }
         } catch (Exception e) {
             TimeValue executionTime = TimeValue.timeValueMillis(Math.max(0, currentTimeInMillis() - startTimeMS));
@@ -449,12 +449,12 @@ public class ClusterApplierService extends AbstractLifecycleComponent implements
             return;
         }
 
-        if (previousClusterState == newClusterState) {
+        if (previousClusterState == newClusterState) { // 1. 如果是同一个, 说明没有ClusterState的更新
             TimeValue executionTime = TimeValue.timeValueMillis(Math.max(0, currentTimeInMillis() - startTimeMS));
             logger.debug("processing [{}]: took [{}] no change in cluster state", task.source, executionTime);
             warnAboutSlowTaskIfNeeded(executionTime, task.source, stopWatch);
             task.listener.onSuccess(task.source);
-        } else {
+        } else {                                      // 2. 有ClusterState的更新
             if (logger.isTraceEnabled()) {
                 logger.debug(
                     "cluster state updated, version [{}], source [{}]\n{}",
@@ -465,7 +465,7 @@ public class ClusterApplierService extends AbstractLifecycleComponent implements
             } else {
                 logger.debug("cluster state updated, version [{}], source [{}]", newClusterState.version(), task.source);
             }
-            try {
+            try {  // 3. 集群状态在本节点的实际变更
                 applyChanges(task, previousClusterState, newClusterState, stopWatch);
                 TimeValue executionTime = TimeValue.timeValueMillis(Math.max(0, currentTimeInMillis() - startTimeMS));
                 logger.debug(
@@ -476,7 +476,7 @@ public class ClusterApplierService extends AbstractLifecycleComponent implements
                     newClusterState.stateUUID()
                 );
                 warnAboutSlowTaskIfNeeded(executionTime, task.source, stopWatch);
-                task.listener.onSuccess(task.source);
+                task.listener.onSuccess(task.source); // 回调 listener
             } catch (Exception e) {
                 TimeValue executionTime = TimeValue.timeValueMillis(Math.max(0, currentTimeInMillis() - startTimeMS));
                 if (logger.isTraceEnabled()) {
@@ -510,11 +510,11 @@ public class ClusterApplierService extends AbstractLifecycleComponent implements
             }
         }
     }
-
+    // *** 集群状态实际变更的地方
     private void applyChanges(UpdateTask task, ClusterState previousClusterState, ClusterState newClusterState, StopWatch stopWatch) {
         ClusterChangedEvent clusterChangedEvent = new ClusterChangedEvent(task.source, newClusterState, previousClusterState);
         // new cluster state, notify all listeners
-        final DiscoveryNodes.Delta nodesDelta = clusterChangedEvent.nodesDelta();
+        final DiscoveryNodes.Delta nodesDelta = clusterChangedEvent.nodesDelta(); // 计算出 delta, 即集群元数据变化的部分
         if (nodesDelta.hasChanges() && logger.isInfoEnabled()) {
             String summary = nodesDelta.shortSummary();
             if (summary.length() > 0) {
@@ -530,23 +530,23 @@ public class ClusterApplierService extends AbstractLifecycleComponent implements
 
         logger.trace("connecting to nodes of cluster state with version {}", newClusterState.version());
         try (Releasable ignored = stopWatch.timing("connecting to new nodes")) {
-            connectToNodesAndWait(newClusterState);
+            connectToNodesAndWait(newClusterState); // 此节点需要连接到所有在新 ClusterState 中的所有节点
         }
-
+        // 集群状态中, 不阻塞持久化设置的写入, 并且集群状态的持久化设置有变化
         // nothing to do until we actually recover from the gateway or any other block indicates we need to disable persistency
         if (clusterChangedEvent.state().blocks().disableStatePersistence() == false && clusterChangedEvent.metadataChanged()) {
             logger.debug("applying settings from cluster state with version {}", newClusterState.version());
             final Settings incomingSettings = clusterChangedEvent.state().metadata().settings();
             try (Releasable ignored = stopWatch.timing("applying settings")) {
-                clusterSettings.applySettings(incomingSettings);
+                clusterSettings.applySettings(incomingSettings); // a. 集群级别的设置, 开始设置
             }
         }
 
         logger.debug("apply cluster state with version {}", newClusterState.version());
-        callClusterStateAppliers(clusterChangedEvent, stopWatch);
-
-        nodeConnectionsService.disconnectFromNodesExcept(newClusterState.nodes());
-
+        callClusterStateAppliers(clusterChangedEvent, stopWatch); // b. 集群状态的状态变更: 紧急, 普通, 低优
+        // b. 这样, 不同的组件就可以抽象自己的逻辑成为一个ClusterStateApplier, 在这里统一的入口被调用. 如: IndicesClusterStateService
+        nodeConnectionsService.disconnectFromNodesExcept(newClusterState.nodes()); // 便是 索引 有关
+        // 移除脱离了集群的节点
         assert newClusterState.coordinationMetadata()
             .getLastAcceptedConfiguration()
             .equals(newClusterState.coordinationMetadata().getLastCommittedConfiguration()) : newClusterState.coordinationMetadata()
@@ -559,7 +559,7 @@ public class ClusterApplierService extends AbstractLifecycleComponent implements
         logger.debug("set locally applied cluster state to version {}", newClusterState.version());
         state.set(newClusterState);
 
-        callClusterStateListeners(clusterChangedEvent, stopWatch);
+        callClusterStateListeners(clusterChangedEvent, stopWatch); // c. 集群状态监听器统一调用入口
     }
 
     protected void connectToNodesAndWait(ClusterState newClusterState) {

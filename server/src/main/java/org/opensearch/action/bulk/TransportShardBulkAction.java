@@ -164,7 +164,7 @@ public class TransportShardBulkAction extends TransportWriteAction<BulkShardRequ
         ClusterStateObserver observer = new ClusterStateObserver(clusterService, request.timeout(), logger, threadPool.getThreadContext());
         performOnPrimary(request, primary, updateHelper, threadPool::absoluteTimeInMillis, (update, shardId, type, mappingListener) -> {
             assert update != null;
-            assert shardId != null;
+            assert shardId != null; // 更新mapping, 如果必要的话, 更新mapping, 需要写入集群元数据, 并且达成一致
             mappingUpdatedAction.updateMappingOnMaster(shardId.getIndex(), type, update, mappingListener);
         }, mappingUpdateListener -> observer.waitForNextChange(new ClusterStateObserver.Listener() {
             @Override
@@ -201,7 +201,7 @@ public class TransportShardBulkAction extends TransportWriteAction<BulkShardRequ
         String executorName
     ) {
         new ActionRunnable<PrimaryResult<BulkShardRequest, BulkShardResponse>>(listener) {
-
+            // 获取写的线程池
             private final Executor executor = threadPool.executor(executorName);
 
             private final BulkPrimaryExecutionContext context = new BulkPrimaryExecutionContext(request, primary);
@@ -216,7 +216,7 @@ public class TransportShardBulkAction extends TransportWriteAction<BulkShardRequ
                         mappingUpdater,
                         waitForMappingUpdate,
                         ActionListener.wrap(v -> executor.execute(this), this::onRejection)
-                    ) == false) {
+                    ) == false) { // 持续得检测. 但是不会忙等吗
                         // We are waiting for a mapping update on another thread, that will invoke this action again once its done
                         // so we just break out here.
                         return;
@@ -224,7 +224,7 @@ public class TransportShardBulkAction extends TransportWriteAction<BulkShardRequ
                     assert context.isInitial(); // either completed and moved to next or reset
                 }
                 // We're done, there's no more operations to execute so we resolve the wrapped listener
-                finishRequest();
+                finishRequest(); // 结束主shard执行
             }
 
             @Override
@@ -263,7 +263,7 @@ public class TransportShardBulkAction extends TransportWriteAction<BulkShardRequ
             private void finishRequest() {
                 ActionListener.completeWith(
                     listener,
-                    () -> new WritePrimaryResult<>(
+                    () -> new WritePrimaryResult<>( // 将主shard的写结果返回
                         context.getBulkShardRequest(),
                         context.buildShardResponse(),
                         context.getLocationToSync(),
@@ -292,7 +292,7 @@ public class TransportShardBulkAction extends TransportWriteAction<BulkShardRequ
         final DocWriteRequest.OpType opType = context.getCurrent().opType();
 
         final UpdateHelper.Result updateResult;
-        if (opType == DocWriteRequest.OpType.UPDATE) {
+        if (opType == DocWriteRequest.OpType.UPDATE) { // 如果是更新需要先获取, 已经在lucene里的文档
             final UpdateRequest updateRequest = (UpdateRequest) context.getCurrent();
             try {
                 updateResult = updateHelper.prepare(updateRequest, context.getPrimary(), nowInMillisSupplier);
@@ -325,7 +325,7 @@ public class TransportShardBulkAction extends TransportWriteAction<BulkShardRequ
                 default:
                     throw new IllegalStateException("Illegal update operation " + updateResult.getResponseResult());
             }
-        } else {
+        } else { // 不是更新,可能是删除, 创建, 以及替换
             context.setRequestToExecute(context.getCurrent());
             updateResult = null;
         }
@@ -338,7 +338,7 @@ public class TransportShardBulkAction extends TransportWriteAction<BulkShardRequ
         final Engine.Result result;
         if (isDelete) {
             final DeleteRequest request = context.getRequestToExecute();
-            result = primary.applyDeleteOperationOnPrimary(
+            result = primary.applyDeleteOperationOnPrimary( // 写数据, 执行删除
                 version,
                 request.type(),
                 request.id(),
@@ -348,7 +348,7 @@ public class TransportShardBulkAction extends TransportWriteAction<BulkShardRequ
             );
         } else {
             final IndexRequest request = context.getRequestToExecute();
-            result = primary.applyIndexOperationOnPrimary(
+            result = primary.applyIndexOperationOnPrimary( // 写数据, 执行替换
                 version,
                 request.versionType(),
                 new SourceToParse(
@@ -359,8 +359,8 @@ public class TransportShardBulkAction extends TransportWriteAction<BulkShardRequ
                     request.getContentType(),
                     request.routing()
                 ),
-                request.ifSeqNo(),
-                request.ifPrimaryTerm(),
+                request.ifSeqNo(), // 如果有, 则Engine里此doc最后一次的修改要和这个值相同
+                request.ifPrimaryTerm(), // 与上面类似
                 request.getAutoGeneratedTimestamp(),
                 request.isRetry()
             );
@@ -368,7 +368,7 @@ public class TransportShardBulkAction extends TransportWriteAction<BulkShardRequ
         if (result.getResultType() == Engine.Result.Type.MAPPING_UPDATE_REQUIRED) {
 
             try {
-                primary.mapperService()
+                primary.mapperService() // 更新合并mapping
                     .merge(
                         context.getRequestToExecute().type(),
                         new CompressedXContent(result.getRequiredMappingUpdate(), XContentType.JSON, ToXContent.EMPTY_PARAMS),
@@ -387,12 +387,12 @@ public class TransportShardBulkAction extends TransportWriteAction<BulkShardRequ
                 new ActionListener<Void>() {
                     @Override
                     public void onResponse(Void v) {
-                        context.markAsRequiringMappingUpdate();
+                        context.markAsRequiringMappingUpdate(); // 更改此条的写入状态: 已经更新mapping
                         waitForMappingUpdate.accept(ActionListener.runAfter(new ActionListener<Void>() {
-                            @Override
+                            @Override // org/opensearch/action/bulk/TransportShardBulkAction.java:169
                             public void onResponse(Void v) {
                                 assert context.requiresWaitingForMappingUpdate();
-                                context.resetForExecutionForRetry();
+                                context.resetForExecutionForRetry(); // 重置状态, 上层是个循环, 待会还会执行这条
                             }
 
                             @Override

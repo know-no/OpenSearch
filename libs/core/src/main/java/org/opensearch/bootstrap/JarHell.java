@@ -183,7 +183,7 @@ public class JarHell {
         // a "list" at all. So just exclude any elements underneath the java home
         String javaHome = System.getProperty("java.home");
         output.accept("java.home: " + javaHome);
-        final Map<String, Path> clazzes = new HashMap<>(32768); //short类型的非负数个数
+        final Map<String, Path> clazzes = new HashMap<>(32768); // short类型的非负数个数
         Set<Path> seenJars = new HashSet<>();
         for (final URL url : urls) {
             final Path path = PathUtils.get(url.toURI());

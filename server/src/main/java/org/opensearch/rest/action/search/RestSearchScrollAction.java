@@ -74,8 +74,8 @@ public class RestSearchScrollAction extends BaseRestHandler {
     public RestChannelConsumer prepareRequest(final RestRequest request, final NodeClient client) throws IOException {
         String scrollId = request.param("scroll_id");
         SearchScrollRequest searchScrollRequest = new SearchScrollRequest();
-        searchScrollRequest.scrollId(scrollId);
-        String scroll = request.param("scroll");
+        searchScrollRequest.scrollId(scrollId); // null empty
+        String scroll = request.param("scroll"); // 获取scroll参数, 时间参数 scroll=10m
         if (scroll != null) {
             searchScrollRequest.scroll(new Scroll(parseTimeValue(scroll, null, "scroll")));
         }
@@ -84,7 +84,7 @@ public class RestSearchScrollAction extends BaseRestHandler {
             if (xContentParser != null) {
                 // NOTE: if rest request with xcontent body has request parameters, values parsed from request body have the precedence
                 try {
-                    searchScrollRequest.fromXContent(xContentParser);
+                    searchScrollRequest.fromXContent(xContentParser); // 读取参数
                 } catch (IOException e) {
                     throw new IllegalArgumentException("Failed to parse request body", e);
                 }

@@ -481,13 +481,13 @@ public class CoordinationState {
             publishResponse.getTerm(),
             sourceNode
         );
-        publishVotes.addVote(sourceNode);
-        if (isPublishQuorum(publishVotes)) {
+        publishVotes.addVote(sourceNode); // 处理来自节点的回复, 添加到了投票结果里
+        if (isPublishQuorum(publishVotes)) { // 是否组成多数派, 是否满足配置文件里配置的多数派条件
             logger.trace(
                 "handlePublishResponse: value committed for version [{}] and term [{}]",
                 publishResponse.getVersion(),
                 publishResponse.getTerm()
-            );
+            ); // 组成多数派, 则, 设置 "请求提交" 请求
             return Optional.of(new ApplyCommitRequest(localNode, publishResponse.getTerm(), publishResponse.getVersion()));
         }
 
@@ -500,7 +500,7 @@ public class CoordinationState {
      * @param applyCommit The ApplyCommitRequest received.
      * @throws CoordinationStateRejectedException if the arguments were incompatible with the current state of this object.
      */
-    public void handleCommit(ApplyCommitRequest applyCommit) {
+    public void handleCommit(ApplyCommitRequest applyCommit) {  // 1 apply请求的term和当前相同
         if (applyCommit.getTerm() != getCurrentTerm()) {
             logger.debug(
                 "handleCommit: ignored commit request due to term mismatch "
@@ -514,7 +514,7 @@ public class CoordinationState {
                 "incoming term " + applyCommit.getTerm() + " does not match current term " + getCurrentTerm()
             );
         }
-        if (applyCommit.getTerm() != getLastAcceptedTerm()) {
+        if (applyCommit.getTerm() != getLastAcceptedTerm()) { // 2 apply请求的term和上次接受到的clustestate的term相同
             logger.debug(
                 "handleCommit: ignored commit request due to term mismatch "
                     + "(expected: [term {} version {}], actual: [term {} version {}])",
@@ -527,7 +527,7 @@ public class CoordinationState {
                 "incoming term " + applyCommit.getTerm() + " does not match last accepted term " + getLastAcceptedTerm()
             );
         }
-        if (applyCommit.getVersion() != getLastAcceptedVersion()) {
+        if (applyCommit.getVersion() != getLastAcceptedVersion()) { // 3 版本相同
             logger.debug(
                 "handleCommit: ignored commit request due to version mismatch (term {}, expected: [{}], actual: [{}])",
                 getLastAcceptedTerm(),
@@ -545,7 +545,7 @@ public class CoordinationState {
             applyCommit.getVersion()
         );
 
-        persistedState.markLastAcceptedStateAsCommitted();
+        persistedState.markLastAcceptedStateAsCommitted(); // 最终提交
         assert getLastCommittedConfiguration().equals(getLastAcceptedConfiguration());
     }
 
@@ -603,7 +603,7 @@ public class CoordinationState {
         default void markLastAcceptedStateAsCommitted() {
             final ClusterState lastAcceptedState = getLastAcceptedState();
             Metadata.Builder metadataBuilder = null;
-            if (lastAcceptedState.getLastAcceptedConfiguration().equals(lastAcceptedState.getLastCommittedConfiguration()) == false) {
+            if (lastAcceptedState.getLastAcceptedConfiguration().equals(lastAcceptedState.getLastCommittedConfiguration()) == false) { // 判断持久化了的和当下最新接受的
                 final CoordinationMetadata coordinationMetadata = CoordinationMetadata.builder(lastAcceptedState.coordinationMetadata())
                     .lastCommittedConfiguration(lastAcceptedState.getLastAcceptedConfiguration())
                     .build();
@@ -613,13 +613,13 @@ public class CoordinationState {
             // if we receive a commit from a Zen1 master that has not recovered its state yet, the cluster uuid might not been known yet.
             assert lastAcceptedState.metadata().clusterUUID().equals(Metadata.UNKNOWN_CLUSTER_UUID) == false
                 || lastAcceptedState.term() == ZEN1_BWC_TERM : "received cluster state with empty cluster uuid but not Zen1 BWC term: "
-                    + lastAcceptedState;
+                    + lastAcceptedState; // 即, zen1的选举在集群master还未恢复或者为选出来的时候, uuid可能是未知的
             if (lastAcceptedState.metadata().clusterUUID().equals(Metadata.UNKNOWN_CLUSTER_UUID) == false
-                && lastAcceptedState.metadata().clusterUUIDCommitted() == false) {
+                && lastAcceptedState.metadata().clusterUUIDCommitted() == false) { // 还未真的加入一个集群
                 if (metadataBuilder == null) {
                     metadataBuilder = Metadata.builder(lastAcceptedState.metadata());
                 }
-                metadataBuilder.clusterUUIDCommitted(true);
+                metadataBuilder.clusterUUIDCommitted(true); // 加入到一个集群了
 
                 if (lastAcceptedState.term() != ZEN1_BWC_TERM) {
                     // Zen1 masters never publish a committed cluster UUID so if we logged this it'd happen on on every update. Let's just

@@ -76,8 +76,8 @@ public abstract class ReplicaShardAllocator extends BaseGatewayShardAllocator {
         RoutingNodes routingNodes = allocation.routingNodes();
         List<Runnable> shardCancellationActions = new ArrayList<>();
         for (RoutingNode routingNode : routingNodes) {
-            for (ShardRouting shard : routingNode) {
-                if (shard.primary()) {
+            for (ShardRouting shard : routingNode) { // 忽略 主, 忽略不在初始化的, 忽视正在移动的, 忽略index_reated
+                if (shard.primary()) {              // 换句话说: 副 , 在初始化, 且不是在移动中的, 不是刚创建的(因为肯定没有数据在disk上)
                     continue;
                 }
                 if (shard.initializing() == false) {
@@ -91,7 +91,7 @@ public abstract class ReplicaShardAllocator extends BaseGatewayShardAllocator {
                 if (shard.unassignedInfo() != null && shard.unassignedInfo().getReason() == UnassignedInfo.Reason.INDEX_CREATED) {
                     continue;
                 }
-
+                //
                 AsyncShardFetch.FetchResult<NodeStoreFilesMetadata> shardStores = fetchData(shard, allocation);
                 if (shardStores.hasData() == false) {
                     logger.trace("{}: fetching new stores for initializing shard", shard);

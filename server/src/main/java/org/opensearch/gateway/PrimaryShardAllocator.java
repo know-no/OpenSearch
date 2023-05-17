@@ -93,13 +93,13 @@ public abstract class PrimaryShardAllocator extends BaseGatewayShardAllocator {
         final RoutingAllocation allocation,
         final Logger logger
     ) {
-        if (isResponsibleFor(unassignedShard) == false) {
+        if (isResponsibleFor(unassignedShard) == false) { // 主, unassigned, 有数据.
             // this allocator is not responsible for allocating this shard
             return AllocateUnassignedDecision.NOT_TAKEN;
         }
 
         final boolean explain = allocation.debugDecision();
-
+        // 从snapshot恢复, 但是还没有很多 snapshot 的设置. 所以设置状态为等待snapshot的数据
         if (unassignedShard.recoverySource().getType() == RecoverySource.Type.SNAPSHOT
             && allocation.snapshotShardSizeInfo().getShardSize(unassignedShard) == null) {
             List<NodeAllocationResult> nodeDecisions = null;

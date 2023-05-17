@@ -56,20 +56,20 @@ final class TransportSearchHelper {
     }
 
     static String buildScrollId(AtomicArray<? extends SearchPhaseResult> searchPhaseResults, Version version) {
-        boolean includeContextUUID = version.onOrAfter(LegacyESVersion.V_7_7_0);
-        try (RAMOutputStream out = new RAMOutputStream()) {
+        boolean includeContextUUID = version.onOrAfter(LegacyESVersion.V_7_7_0); // 7.7 只有有关于 contextUUID
+        try (RAMOutputStream out = new RAMOutputStream()) { // 虽然弃用了, 但是还是可以用来从内存出写出的, 目的地是一些list
             if (includeContextUUID) {
                 out.writeString(INCLUDE_CONTEXT_UUID);
             }
             out.writeString(searchPhaseResults.length() == 1 ? ParsedScrollId.QUERY_AND_FETCH_TYPE : ParsedScrollId.QUERY_THEN_FETCH_TYPE);
             out.writeVInt(searchPhaseResults.asList().size());
-            for (SearchPhaseResult searchPhaseResult : searchPhaseResults.asList()) {
+            for (SearchPhaseResult searchPhaseResult : searchPhaseResults.asList()) { // 每个节点的返回结果
                 if (includeContextUUID) {
                     out.writeString(searchPhaseResult.getContextId().getSessionId());
                 }
                 out.writeLong(searchPhaseResult.getContextId().getId());
                 SearchShardTarget searchShardTarget = searchPhaseResult.getSearchShardTarget();
-                if (searchShardTarget.getClusterAlias() != null) {
+                if (searchShardTarget.getClusterAlias() != null) { // 远程集群
                     out.writeString(
                         RemoteClusterAware.buildRemoteIndexName(searchShardTarget.getClusterAlias(), searchShardTarget.getNodeId())
                     );
@@ -77,9 +77,9 @@ final class TransportSearchHelper {
                     out.writeString(searchShardTarget.getNodeId());
                 }
             }
-            byte[] bytes = new byte[(int) out.getFilePointer()];
+            byte[] bytes = new byte[(int) out.getFilePointer()]; // getFilePointer 获取输出的总bytes数量
             out.writeTo(bytes, 0);
-            return Base64.getUrlEncoder().encodeToString(bytes);
+            return Base64.getUrlEncoder().encodeToString(bytes); // url encode
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
@@ -88,24 +88,24 @@ final class TransportSearchHelper {
     static ParsedScrollId parseScrollId(String scrollId) {
         try {
             byte[] bytes = Base64.getUrlDecoder().decode(scrollId);
-            ByteArrayDataInput in = new ByteArrayDataInput(bytes);
+            ByteArrayDataInput in = new ByteArrayDataInput(bytes);// lucene DataInput
             final boolean includeContextUUID;
-            final String type;
+            final String type; // query and/then fetch
             final String firstChunk = in.readString();
-            if (INCLUDE_CONTEXT_UUID.equals(firstChunk)) {
+            if (INCLUDE_CONTEXT_UUID.equals(firstChunk)) { // 判断是否是7.7以后的包含了contextUUID的, 即每个节点都把session等信息保存过来
                 includeContextUUID = true;
                 type = in.readString();
             } else {
                 includeContextUUID = false;
                 type = firstChunk;
-            }
+            } // SearchContextIdForNode, 封装每个node上的查询session 信息, 主要是id
             SearchContextIdForNode[] context = new SearchContextIdForNode[in.readVInt()];
-            for (int i = 0; i < context.length; ++i) {
-                final String contextUUID = includeContextUUID ? in.readString() : "";
+            for (int i = 0; i < context.length; ++i) { // contextUUid 是每个节点保存的session id
+                final String contextUUID = includeContextUUID ? in.readString() : ""; //如果包含了contextuuid, 则挨个读取
                 long id = in.readLong();
-                String target = in.readString();
+                String target = in.readString(); // node
                 String clusterAlias;
-                final int index = target.indexOf(RemoteClusterAware.REMOTE_CLUSTER_INDEX_SEPARATOR);
+                final int index = target.indexOf(RemoteClusterAware.REMOTE_CLUSTER_INDEX_SEPARATOR); // 判断远程集群
                 if (index == -1) {
                     clusterAlias = null;
                 } else {

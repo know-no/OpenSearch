@@ -238,9 +238,9 @@ public class IndicesClusterStateService extends AbstractLifecycleComponent imple
         // we need to clean the shards and indices we have on this node, since we
         // are going to recover them again once state persistence is disabled (no master / not recovered)
         // TODO: feels hacky, a block disables state persistence, and then we clean the allocated shards, maybe another flag in blocks?
-        if (state.blocks().disableStatePersistence()) {
+        if (state.blocks().disableStatePersistence()) { // todo? 这一步的目的是什么? 如果集群禁止持久化状态
             for (AllocatedIndex<? extends Shard> indexService : indicesService) {
-                // also cleans shards
+                // also cleans shards todo? 那为什么要清理 ? 因为集群状态会没恢复, 所以先不分配?
                 indicesService.removeIndex(indexService.index(), NO_LONGER_ASSIGNED, "cleaning index (disabled block persistence)");
             }
             return;
@@ -271,8 +271,8 @@ public class IndicesClusterStateService extends AbstractLifecycleComponent imple
      * @param state new cluster state
      */
     private void updateFailedShardsCache(final ClusterState state) {
-        RoutingNode localRoutingNode = state.getRoutingNodes().node(state.nodes().getLocalNodeId());
-        if (localRoutingNode == null) {
+        RoutingNode localRoutingNode = state.getRoutingNodes().node(state.nodes().getLocalNodeId()); //获取此node上分配的shard
+        if (localRoutingNode == null) { // 如果此node上没有分配, 则直接忽略
             failedShardsCache.clear();
             return;
         }
@@ -306,7 +306,7 @@ public class IndicesClusterStateService extends AbstractLifecycleComponent imple
         final String localNodeId = state.nodes().getLocalNodeId();
         assert localNodeId != null;
 
-        for (Index index : event.indicesDeleted()) {
+        for (Index index : event.indicesDeleted()) { // 如果有索引被删除
             if (logger.isDebugEnabled()) {
                 logger.debug("[{}] cleaning index, no longer part of the metadata", index);
             }
@@ -894,7 +894,7 @@ public class IndicesClusterStateService extends AbstractLifecycleComponent imple
             IndexShardRoutingTable routingTable
         ) throws IOException;
     }
-
+    // 代表被分配的shards,子类实现: IndexService
     public interface AllocatedIndex<T extends Shard> extends Iterable<T>, IndexComponent {
 
         /**

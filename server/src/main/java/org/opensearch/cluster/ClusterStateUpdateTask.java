@@ -41,7 +41,7 @@ import java.util.List;
 /**
  * A task that can update the cluster state.
  */
-public abstract class ClusterStateUpdateTask
+public abstract class ClusterStateUpdateTask //抽象集群状态更新:ClusterService.submitStateUpdateTask(String, T)
     implements
         ClusterStateTaskConfig,
         ClusterStateTaskExecutor<ClusterStateUpdateTask>,

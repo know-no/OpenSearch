@@ -127,8 +127,8 @@ public class ReplicationOperation<
     }
 
     public void execute() throws Exception {
-        final String activeShardCountFailure = checkActiveShardCount();
-        final ShardRouting primaryRouting = primary.routingEntry();
+        final String activeShardCountFailure = checkActiveShardCount(); // 写数据, 获取活跃的shard副本总数是否满足安全写入的要求
+        final ShardRouting primaryRouting = primary.routingEntry(); // 获取 primary
         final ShardId primaryId = primaryRouting.shardId();
         if (activeShardCountFailure != null) {
             finishAsFailed(
@@ -145,8 +145,8 @@ public class ReplicationOperation<
 
         totalShards.incrementAndGet();
         pendingActions.incrementAndGet(); // increase by 1 until we finish all primary coordination
-        primary.perform(request, ActionListener.wrap(this::handlePrimaryResult, this::finishAsFailed));
-    }
+        primary.perform(request, ActionListener.wrap(this::handlePrimaryResult, this::finishAsFailed));//这里会回调,处理副本们的写
+    }  // PrimaryShardReference#perform
 
     private void handlePrimaryResult(final PrimaryResultT primaryResult) {
         this.primaryResult = primaryResult;
@@ -162,7 +162,7 @@ public class ReplicationOperation<
             // is valid for this replication group. If we would sample in the reverse, the global checkpoint might be based on a subset
             // of the sampled replication group, and advanced further than what the given replication group would allow it to.
             // This would entail that some shards could learn about a global checkpoint that would be higher than its local checkpoint.
-            final long globalCheckpoint = primary.computedGlobalCheckpoint();
+            final long globalCheckpoint = primary.computedGlobalCheckpoint(); //由主shard来维护的globalcheckpoint,发送给所有的replicas
             // we have to capture the max_seq_no_of_updates after this request was completed on the primary to make sure the value of
             // max_seq_no_of_updates on replica when this request is executed is at least the value on the primary when it was executed
             // on.
@@ -170,11 +170,11 @@ public class ReplicationOperation<
             assert maxSeqNoOfUpdatesOrDeletes != SequenceNumbers.UNASSIGNED_SEQ_NO : "seqno_of_updates still uninitialized";
             final ReplicationGroup replicationGroup = primary.getReplicationGroup();
             final PendingReplicationActions pendingReplicationActions = primary.getPendingReplicationActions();
-            markUnavailableShardsAsStale(replicaRequest, replicationGroup);
+            markUnavailableShardsAsStale(replicaRequest, replicationGroup); // 开始处理副本的写, 写之前标记不可见的为 stale
             performOnReplicas(replicaRequest, globalCheckpoint, maxSeqNoOfUpdatesOrDeletes, replicationGroup, pendingReplicationActions);
-        }
-        primaryResult.runPostReplicationActions(new ActionListener<Void>() {
-
+        } // 异步写完所有的副本  // 只要主shard执行完成, 就可以 runPostReplicationActions: 处理translog的刷盘
+        primaryResult.runPostReplicationActions(new ActionListener<Void>() { // 处理完刷盘, 就可以返回给用户了.
+        // 只有在刷盘完成后, 才会调用刷盘的listener, 参会调用 这里的回调, 回调返回用户
             @Override
             public void onResponse(Void aVoid) {
                 successfulShards.incrementAndGet();
@@ -197,10 +197,10 @@ public class ReplicationOperation<
 
     private void markUnavailableShardsAsStale(ReplicaRequest replicaRequest, ReplicationGroup replicationGroup) {
         // if inSyncAllocationIds contains allocation ids of shards that don't exist in RoutingTable, mark copies as stale
-        for (String allocationId : replicationGroup.getUnavailableInSyncShards()) {
-            pendingActions.incrementAndGet();
-            replicasProxy.markShardCopyAsStaleIfNeeded(
-                replicaRequest.shardId(),
+        for (String allocationId : replicationGroup.getUnavailableInSyncShards()) {//在inSyncallocationids里但是没有被分配到node的
+            pendingActions.incrementAndGet();       // 意味着有最新的stale, 但是现在 allocation 却找不到了
+            replicasProxy.markShardCopyAsStaleIfNeeded( // 可能向master汇报, 这个shard失败了, 需要将它从 inSync set移除,可能
+                replicaRequest.shardId(),               // 还需要在其他地方重建这个shard
                 allocationId,
                 primaryTerm,
                 ActionListener.wrap(r -> decPendingAndFinishIfNeeded(), ReplicationOperation.this::onNoLongerPrimary)
@@ -415,7 +415,7 @@ public class ReplicationOperation<
             } else {
                 failuresArray = new ReplicationResponse.ShardInfo.Failure[shardReplicaFailures.size()];
                 shardReplicaFailures.toArray(failuresArray);
-            }
+            } // 当所有的都完成后, 返回给用户写入结果
             primaryResult.setShardInfo(new ReplicationResponse.ShardInfo(totalShards.get(), successfulShards.get(), failuresArray));
             resultListener.onResponse(primaryResult);
         }

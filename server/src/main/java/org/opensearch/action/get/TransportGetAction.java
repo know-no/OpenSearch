@@ -109,9 +109,9 @@ public class TransportGetAction extends TransportSingleShardAction<GetRequest, G
     }
 
     @Override
-    protected void asyncShardOperation(GetRequest request, ShardId shardId, ActionListener<GetResponse> listener) throws IOException {
+    protected void asyncShardOperation(GetRequest request, ShardId shardId, ActionListener<GetResponse> listener) throws IOException { // 安全获得这个节点上的IndexService
         IndexService indexService = indicesService.indexServiceSafe(shardId.getIndex());
-        IndexShard indexShard = indexService.getShard(shardId.id());
+        IndexShard indexShard = indexService.getShard(shardId.id()); // 获取具体的shard
         if (request.realtime()) { // we are not tied to a refresh cycle here anyway
             super.asyncShardOperation(request, shardId, listener);
         } else {
