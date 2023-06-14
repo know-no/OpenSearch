@@ -47,14 +47,14 @@ public class Netty4HttpChannel implements HttpChannel {
     private final CompletableContext<Void> closeContext = new CompletableContext<>();
 
     Netty4HttpChannel(Channel channel) {
-        this.channel = channel;
+        this.channel = channel; // channel的关闭，要通知到 closeContext
         Netty4TcpChannel.addListener(this.channel.closeFuture(), closeContext);
     }
 
     @Override
     public void sendResponse(HttpResponse response, ActionListener<Void> listener) {
         channel.writeAndFlush(response, Netty4TcpChannel.addPromise(listener, channel));
-    }
+    } // channel 写后flush，执行完动作后， 会有一个 promise，promise会做一些事情， promise会由谁来做？
 
     @Override
     public InetSocketAddress getLocalAddress() {
@@ -78,7 +78,7 @@ public class Netty4HttpChannel implements HttpChannel {
 
     @Override
     public void close() {
-        channel.close();
+        channel.close(); // 并不保证channel一定会被close，所以设置了channel的close listener
     }
 
     public Channel getNettyChannel() {

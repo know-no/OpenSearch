@@ -48,7 +48,7 @@ public class HttpPipeliningAggregator<Listener> {
      * current write sequence, implying that all preceding messages have been written.
      */
     private int readSequence;
-    private int writeSequence;
+    private int writeSequence; // 下一个需要写出去的序列
 
     public HttpPipeliningAggregator(int maxEventsHeld) {
         this.maxEventsHeld = maxEventsHeld;
@@ -60,7 +60,7 @@ public class HttpPipeliningAggregator<Listener> {
     }
 
     public List<Tuple<HttpPipelinedResponse, Listener>> write(final HttpPipelinedResponse response, Listener listener) {
-        if (outboundHoldingQueue.size() < maxEventsHeld) {
+        if (outboundHoldingQueue.size() < maxEventsHeld) { // 以 sequence 来比较值
             ArrayList<Tuple<HttpPipelinedResponse, Listener>> readyResponses = new ArrayList<>();
             outboundHoldingQueue.add(new Tuple<>(response, listener));
             while (!outboundHoldingQueue.isEmpty()) {
@@ -71,7 +71,7 @@ public class HttpPipeliningAggregator<Listener> {
                 final Tuple<HttpPipelinedResponse, Listener> top = outboundHoldingQueue.peek();
 
                 if (top.v1().getSequence() != writeSequence) {
-                    break;
+                    break; // 比这个大的到来到队列里，但是还不能写出去，因为比他小的还没写出去
                 }
                 outboundHoldingQueue.poll();
                 readyResponses.add(top);

@@ -91,7 +91,7 @@ public class IndexNameExpressionResolver {
     );
 
     private final ThreadContext threadContext;
-
+    // threadContext只是会被用来读取 accesssystemindex 而已
     public IndexNameExpressionResolver(ThreadContext threadContext) {
         this.threadContext = Objects.requireNonNull(threadContext, "Thread Context must not be null");
     }

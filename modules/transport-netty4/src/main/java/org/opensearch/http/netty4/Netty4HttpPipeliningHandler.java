@@ -67,7 +67,7 @@ public class Netty4HttpPipeliningHandler extends ChannelDuplexHandler {
     @Override
     public void channelRead(final ChannelHandlerContext ctx, final Object msg) {
         assert msg instanceof Netty4HttpRequest : "Invalid message type: " + msg.getClass();
-        HttpPipelinedRequest pipelinedRequest = aggregator.read(((Netty4HttpRequest) msg));
+        HttpPipelinedRequest pipelinedRequest = aggregator.read(((Netty4HttpRequest) msg)); // 增加它的序列
         ctx.fireChannelRead(pipelinedRequest);
     }
 
@@ -80,7 +80,7 @@ public class Netty4HttpPipeliningHandler extends ChannelDuplexHandler {
             List<Tuple<HttpPipelinedResponse, ChannelPromise>> readyResponses = aggregator.write(response, promise);
             for (Tuple<HttpPipelinedResponse, ChannelPromise> readyResponse : readyResponses) {
                 ctx.write(readyResponse.v1().getDelegateRequest(), readyResponse.v2()); // 继续写, v2是channelPromise
-            }
+            } // 上面的 readyResponses 都是可以被写出去的，顺序是正确的
             success = true;
         } catch (IllegalStateException e) {
             ctx.channel().close();

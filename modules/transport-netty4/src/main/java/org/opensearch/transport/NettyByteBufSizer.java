@@ -41,7 +41,7 @@ import java.util.List;
 
 @ChannelHandler.Sharable
 public class NettyByteBufSizer extends MessageToMessageDecoder<ByteBuf> {
-
+// 从 ByteBuf转化
     @Override
     protected void decode(ChannelHandlerContext ctx, ByteBuf buf, List<Object> out) {
         int readableBytes = buf.readableBytes();

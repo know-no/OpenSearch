@@ -191,7 +191,7 @@ public abstract class AbstractScopedSettings {
      * settings.
      * @param newSettings the settings to apply
      * @return the unmerged applied settings
-    */
+    */ // 系统有了新的settings，调用其他组件在这里注册的监听器，如Security插件注册的
     public synchronized Settings applySettings(Settings newSettings) {
         if (lastSettingsApplied != null && newSettings.equals(lastSettingsApplied)) {
             // nothing changed in the settings, ignore
@@ -226,7 +226,7 @@ public abstract class AbstractScopedSettings {
      * </p>
      * @param validator an additional validator that is only applied to updates of this setting.
      *                  This is useful to add additional validation to settings at runtime compared to at startup time.
-     */
+     */ // 注册cluster的settings的监听器，监听的具体settings是参数settings,当此参数代表的settings变化以后，就会调用对应的validator以及consumer
     public synchronized <T> void addSettingsUpdateConsumer(Setting<T> setting, Consumer<T> consumer, Consumer<T> validator) {
         if (setting != get(setting.getKey())) {
             throw new IllegalArgumentException("Setting is not registered for key [" + setting.getKey() + "]");
@@ -420,7 +420,7 @@ public abstract class AbstractScopedSettings {
     /**
      * Adds a settings consumer that accepts the values for two settings.
      * See {@link #addSettingsUpdateConsumer(Setting, Setting, BiConsumer, BiConsumer)} for details.
-     */
+     */ // 注册
     public synchronized <A, B> void addSettingsUpdateConsumer(Setting<A> a, Setting<B> b, BiConsumer<A, B> consumer) {
         addSettingsUpdateConsumer(a, b, consumer, (i, j) -> {});
     }

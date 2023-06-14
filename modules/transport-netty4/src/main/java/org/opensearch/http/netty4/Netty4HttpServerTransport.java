@@ -215,7 +215,7 @@ public class Netty4HttpServerTransport extends AbstractHttpServerTransport {
         try {
             sharedGroup = sharedGroupFactory.getHttpGroup();
             serverBootstrap = new ServerBootstrap();
-
+            // http端的server
             serverBootstrap.group(sharedGroup.getLowLevelGroup());
 
             // NettyAllocator will return the channel type designed to work with the configuredAllocator
@@ -330,9 +330,9 @@ public class Netty4HttpServerTransport extends AbstractHttpServerTransport {
             this.transport = transport;
             this.handlingSettings = handlingSettings;
             this.byteBufSizer = new NettyByteBufSizer();
-            this.requestCreator = new Netty4HttpRequestCreator();
+            this.requestCreator = new Netty4HttpRequestCreator(); // 将netty的request 转化为 ops的http request 类，方便使用而已
             this.requestHandler = new Netty4HttpRequestHandler(transport); //将Ops的请求handle逻辑封装为netty的一部分
-            this.responseCreator = new Netty4HttpResponseCreator();
+            this.responseCreator = new Netty4HttpResponseCreator(); // 将ops的response转为 netty的response，方便发送
         }
 
         @Override
@@ -346,7 +346,7 @@ public class Netty4HttpServerTransport extends AbstractHttpServerTransport {
                 handlingSettings.getMaxInitialLineLength(),
                 handlingSettings.getMaxHeaderSize(),
                 handlingSettings.getMaxChunkSize()
-            );
+            ); // 解析http协议的数据, 再解压, 聚合消息,
             decoder.setCumulator(ByteToMessageDecoder.COMPOSITE_CUMULATOR);
             ch.pipeline().addLast("decoder", decoder);
             ch.pipeline().addLast("decoder_compress", new HttpContentDecompressor());
@@ -360,7 +360,7 @@ public class Netty4HttpServerTransport extends AbstractHttpServerTransport {
             ch.pipeline().addLast("request_creator", requestCreator); // 可以构造出opensearch Rest请求
             ch.pipeline().addLast("response_creator", responseCreator);
             ch.pipeline().addLast("pipelining", new Netty4HttpPipeliningHandler(logger,
-                transport.pipeliningMaxEvents)); // 双向
+                transport.pipeliningMaxEvents)); // 双向, 保证用户的请求和返回是按照顺序的，比如同一个http连接上的
             ch.pipeline().addLast("handler", requestHandler); // 添加处理Rest请求的handler
             transport.serverAcceptedChannel(nettyHttpChannel); // 注册, 方便管理
         }

@@ -921,7 +921,7 @@ public class Node implements Closeable {
                         .toInstance(new PeerRecoveryTargetService(threadPool, transportService, recoverySettings, clusterService));
                 }
                 b.bind(HttpServerTransport.class).toInstance(httpServerTransport);
-                pluginComponents.stream().forEach(p -> b.bind((Class) p.getClass()).toInstance(p));
+                pluginComponents.stream().forEach(p -> b.bind((Class) p.getClass()).toInstance(p));//这里做插件的所有components的注入
                 b.bind(PersistentTasksService.class).toInstance(persistentTasksService);
                 b.bind(PersistentTasksClusterService.class).toInstance(persistentTasksClusterService);
                 b.bind(PersistentTasksExecutorRegistry.class).toInstance(registry);

@@ -115,34 +115,34 @@ public class InboundPipeline implements Releasable {
     }
 
     public void doHandleBytes(TcpChannel channel, ReleasableBytesReference reference) throws IOException {
-        channel.getChannelStats().markAccessed(relativeTimeInMillis.getAsLong());
+        channel.getChannelStats().markAccessed(relativeTimeInMillis.getAsLong());// 再次访问TcpChannel的时间
         statsTracker.markBytesRead(reference.length());
-        pending.add(reference.retain());
-
-        final ArrayList<Object> fragments = fragmentList.get();
+        pending.add(reference.retain());// retain + 1
+        // 把这些字节消息放进双端队列、栈
+        final ArrayList<Object> fragments = fragmentList.get(); // 线程专属
         boolean continueHandling = true;
 
         while (continueHandling && isClosed == false) {
             boolean continueDecoding = true;
             while (continueDecoding && pending.isEmpty() == false) {
-                try (ReleasableBytesReference toDecode = getPendingBytes()) {
+                try (ReleasableBytesReference toDecode = getPendingBytes()) { // 利用了组合的设计模式
                     final int bytesDecoded = decoder.decode(toDecode, fragments::add);
                     if (bytesDecoded != 0) {
-                        releasePendingBytes(bytesDecoded);
+                        releasePendingBytes(bytesDecoded); // 释放解码过的字节
                         if (fragments.isEmpty() == false && endOfMessage(fragments.get(fragments.size() - 1))) {
-                            continueDecoding = false;
+                            continueDecoding = false; // fragments有信息， 且完整的组成一个消息了
                         }
                     } else {
                         continueDecoding = false;
                     }
                 }
             }
-
+            // 判断是否有完整消息，没有的话，就不继续向下处理了
             if (fragments.isEmpty()) {
                 continueHandling = false;
-            } else {
+            } else { // 有的情况下
                 try {
-                    forwardFragments(channel, fragments);
+                    forwardFragments(channel, fragments); // 向前传递信息
                 } finally {
                     for (Object fragment : fragments) {
                         if (fragment instanceof ReleasableBytesReference) {

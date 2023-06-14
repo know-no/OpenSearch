@@ -71,17 +71,17 @@ public class InboundDecoder implements Releasable {
     }
 
     public int internalDecode(ReleasableBytesReference reference, Consumer<Object> fragmentConsumer) throws IOException {
-        if (isOnHeader()) {
+        if (isOnHeader()) { // todo ?
             int messageLength = TcpTransport.readMessageLength(reference);
-            if (messageLength == -1) {
+            if (messageLength == -1) { // 标识信息大小的前六个字节缺失
                 return 0;
             } else if (messageLength == 0) {
-                fragmentConsumer.accept(PING);
+                fragmentConsumer.accept(PING); // 增加PING
                 return 6;
             } else {
-                int headerBytesToRead = headerBytesToRead(reference);
+                int headerBytesToRead = headerBytesToRead(reference); // 标识版本信息的字段
                 if (headerBytesToRead == 0) {
-                    return 0;
+                    return 0; // 没有， 则返回0
                 } else {
                     totalNetworkSize = messageLength + TcpHeader.BYTES_REQUIRED_FOR_MESSAGE_SIZE;
 

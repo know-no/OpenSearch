@@ -154,10 +154,10 @@ public class Netty4Transport extends TcpTransport {
     @Override
     protected void doStart() {
         boolean success = false;
-        try {
+        try { // transport 9300的client 和 server
             sharedGroup = sharedGroupFactory.getTransportGroup();
             clientBootstrap = createClientBootstrap(sharedGroup);
-            if (NetworkService.NETWORK_SERVER.get(settings)) {
+            if (NetworkService.NETWORK_SERVER.get(settings)) { // 不仅是客户端，还是服务端
                 for (ProfileSettings profileSettings : profileSettings) {
                     createServerBootstrap(profileSettings, sharedGroup);
                     bindServer(profileSettings);
@@ -374,12 +374,12 @@ public class Netty4Transport extends TcpTransport {
 
         @Override
         protected void initChannel(Channel ch) throws Exception {
-            addClosedExceptionLogger(ch);
+            addClosedExceptionLogger(ch); // channel close的时候，调用listener
             assert ch instanceof Netty4NioSocketChannel;
-            NetUtils.tryEnsureReasonableKeepAliveConfig(((Netty4NioSocketChannel) ch).javaChannel());
+            NetUtils.tryEnsureReasonableKeepAliveConfig(((Netty4NioSocketChannel) ch).javaChannel()); //改变keeplive to5m
             Netty4TcpChannel nettyTcpChannel = new Netty4TcpChannel(ch, true, name, ch.newSucceededFuture());
-            ch.attr(CHANNEL_KEY).set(nettyTcpChannel);
-            ch.pipeline().addLast("byte_buf_sizer", sizer);
+            ch.attr(CHANNEL_KEY).set(nettyTcpChannel);  // tcpCHannel 是对netty channel的进一步包装 // channel key 设
+            ch.pipeline().addLast("byte_buf_sizer", sizer); // 底层select的时候就可以知道是哪个 TcpChannel了
             ch.pipeline().addLast("logging", new OpenSearchLoggingHandler());
             ch.pipeline().addLast("dispatcher", new Netty4MessageChannelHandler(pageCacheRecycler, Netty4Transport.this));
             serverAcceptedChannel(nettyTcpChannel);
@@ -387,7 +387,7 @@ public class Netty4Transport extends TcpTransport {
 
         @Override
         public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
-            ExceptionsHelper.maybeDieOnAnotherThread(cause);
+            ExceptionsHelper.maybeDieOnAnotherThread(cause); // 如果是不可恢复的异常等等，则在另外一个线程中往上抛，因为那样最上层没有人会handle
             super.exceptionCaught(ctx, cause);
         }
     }
@@ -400,7 +400,7 @@ public class Netty4Transport extends TcpTransport {
         });
     }
 
-    @ChannelHandler.Sharable
+    @ChannelHandler.Sharable // 共享的
     private class ServerChannelExceptionHandler extends ChannelInboundHandlerAdapter {
 
         @Override

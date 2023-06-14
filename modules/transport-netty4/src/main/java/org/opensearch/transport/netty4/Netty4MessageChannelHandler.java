@@ -65,7 +65,7 @@ final class Netty4MessageChannelHandler extends ChannelDuplexHandler {
 
     private WriteOperation currentWrite;
     private final InboundPipeline pipeline;
-
+    // 不是共享的， 所以，decoder也是私有的
     Netty4MessageChannelHandler(PageCacheRecycler recycler, Netty4Transport transport) {
         this.transport = transport;
         final ThreadPool threadPool = transport.getThreadPool();
@@ -82,17 +82,17 @@ final class Netty4MessageChannelHandler extends ChannelDuplexHandler {
     }
 
     @Override
-    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {// 期望线程上下文为空，或者只有trace
         assert Transports.assertDefaultThreadContext(transport.getThreadPool().getThreadContext());
         assert Transports.assertTransportThread();
         assert msg instanceof ByteBuf : "Expected message type ByteBuf, found: " + msg.getClass();
 
-        final ByteBuf buffer = (ByteBuf) msg;
+        final ByteBuf buffer = (ByteBuf) msg; // 获取tcp的channel
         Netty4TcpChannel channel = ctx.channel().attr(Netty4Transport.CHANNEL_KEY).get();
-        final BytesReference wrapped = Netty4Utils.toBytesReference(buffer);
-        try (ReleasableBytesReference reference = new ReleasableBytesReference(wrapped, buffer::release)) {
-            pipeline.handleBytes(channel, reference); // 从transport读取到的二进制数据
-        }
+        final BytesReference wrapped = Netty4Utils.toBytesReference(buffer); // 转化成ops的数据结构，方便操作
+        try (ReleasableBytesReference reference = new ReleasableBytesReference(wrapped, buffer::release)) { // 利用try的close特性，在release的时候，做底层netty数据结构的release
+            pipeline.handleBytes(channel, reference); // 从transport读取到的二进制数据, 在channelRead的时候调用，并不知道channel有没有读
+        }     // 全一个msg， 但是pipeline里会调用
     }
 
     @Override

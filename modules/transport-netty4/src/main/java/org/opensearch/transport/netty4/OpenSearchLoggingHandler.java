@@ -45,6 +45,6 @@ final class OpenSearchLoggingHandler extends LoggingHandler {
     @Override
     public void channelReadComplete(ChannelHandlerContext ctx) throws Exception {
         // We do not want to log read complete events because we log inbound messages in the TcpTransport.
-        ctx.fireChannelReadComplete();
+        ctx.fireChannelReadComplete(); // 重写， 啥也不做，根据netty的特性 override是感兴趣的，但是覆盖了LoggingHandler
     }
 }

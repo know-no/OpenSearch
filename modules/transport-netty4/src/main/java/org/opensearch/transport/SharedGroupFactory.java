@@ -84,7 +84,7 @@ public final class SharedGroupFactory {
     }
 
     public synchronized SharedGroup getHttpGroup() {
-        if (httpWorkerCount == 0) {
+        if (httpWorkerCount == 0) { // 如果http worker数目为0
             return getGenericGroup();
         } else {
             if (dedicatedHttpGroup == null) {
@@ -92,7 +92,7 @@ public final class SharedGroupFactory {
                     httpWorkerCount,
                     daemonThreadFactory(settings, HttpServerTransport.HTTP_SERVER_WORKER_THREAD_NAME_PREFIX)
                 );
-                dedicatedHttpGroup = new SharedGroup(new RefCountedGroup(eventLoopGroup));
+                dedicatedHttpGroup = new SharedGroup(new RefCountedGroup(eventLoopGroup)); // 套了个应用计数
             }
             return dedicatedHttpGroup;
         }
@@ -149,7 +149,7 @@ public final class SharedGroupFactory {
             return refCountedGroup.eventLoopGroup;
         }
 
-        public void shutdown() {
+        public void shutdown() { // 每个shared的instance，其实都代表一次引用，关闭就是减小一次
             if (isOpen.compareAndSet(true, false)) {
                 refCountedGroup.decRef();
             }

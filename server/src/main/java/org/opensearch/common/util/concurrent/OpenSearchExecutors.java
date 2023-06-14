@@ -345,7 +345,7 @@ public class OpenSearchExecutors {
 
         OpenSearchThreadFactory(String namePrefix) {
             this.namePrefix = namePrefix;
-            SecurityManager s = System.getSecurityManager();
+            SecurityManager s = System.getSecurityManager(); // 参考： http://www.tianshouzhi.com/api/tutorials/mutithread/300
             group = (s != null) ? s.getThreadGroup() : Thread.currentThread().getThreadGroup();
         }
 
