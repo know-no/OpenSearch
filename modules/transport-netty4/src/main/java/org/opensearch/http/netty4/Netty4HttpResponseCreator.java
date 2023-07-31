@@ -72,9 +72,9 @@ class Netty4HttpResponseCreator extends MessageToMessageEncoder<Netty4HttpRespon
             out.add(response);
             ByteBuf content = msg.content();
             while (content.readableBytes() > SPLIT_THRESHOLD) {
-                out.add(new DefaultHttpContent(content.readRetainedSlice(SPLIT_THRESHOLD)));
+                out.add(new DefaultHttpContent(content.readRetainedSlice(SPLIT_THRESHOLD))); // response内容分段
             }
-            out.add(new DefaultLastHttpContent(content.readRetainedSlice(content.readableBytes())));
-        }
+            out.add(new DefaultLastHttpContent(content.readRetainedSlice(content.readableBytes()))); // 最后一段
+        } // out里的数据会被
     }
 }

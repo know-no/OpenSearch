@@ -198,7 +198,7 @@ final class Bootstrap {
         // initialize probes before the security manager is installed
         initializeProbes();
 
-        if (addShutdownHook) {
+        if (addShutdownHook) { // jvm 关闭的hook
             Runtime.getRuntime().addShutdownHook(new Thread() {
                 @Override
                 public void run() {

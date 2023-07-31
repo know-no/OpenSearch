@@ -360,7 +360,7 @@ public class Netty4HttpServerTransport extends AbstractHttpServerTransport {
             ch.pipeline().addLast("request_creator", requestCreator); // 可以构造出opensearch Rest请求
             ch.pipeline().addLast("response_creator", responseCreator);
             ch.pipeline().addLast("pipelining", new Netty4HttpPipeliningHandler(logger,
-                transport.pipeliningMaxEvents)); // 双向, 保证用户的请求和返回是按照顺序的，比如同一个http连接上的
+                transport.pipeliningMaxEvents));//双向,保证用户的请求和返回是按照顺序的，比如同一个http连接上的,不同http连接上的不保证，因为PipelingHandler不是share的， 而是每个channel都有的
             ch.pipeline().addLast("handler", requestHandler); // 添加处理Rest请求的handler
             transport.serverAcceptedChannel(nettyHttpChannel); // 注册, 方便管理
         }

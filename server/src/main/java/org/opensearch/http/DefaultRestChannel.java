@@ -149,7 +149,7 @@ public class DefaultRestChannel extends AbstractRestChannel implements RestChann
             setHeaderField(httpResponse, CONTENT_TYPE, restResponse.contentType(), false);
             // If our response has no content-length, calculate and set one
             contentLength = String.valueOf(restResponse.content().length());
-            setHeaderField(httpResponse, CONTENT_LENGTH, contentLength, false);
+            setHeaderField(httpResponse, CONTENT_LENGTH, contentLength, false); //http协议，需要设置长度，否则client会一直等待
 
             addCookies(httpResponse);
 
