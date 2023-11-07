@@ -333,7 +333,7 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
                                         bulkRequest.requests.set(i, null);
                                     }
                                 }
-                            } // 资源已存在,那就当成是陈宫了
+                            } // 资源已存在,那就当成是成功了
                             if (counter.decrementAndGet() == 0) {
                                 final ActionListener<BulkResponse> wrappedListener = ActionListener.wrap(listener::onResponse, inner -> {
                                     inner.addSuppressed(e);
@@ -633,9 +633,9 @@ public class TransportBulkAction extends HandledTransportAction<BulkRequest, Bul
                     shardId,
                     bulkShardRequest.ramBytesUsed(),
                     isOnlySystem
-                ); // 交给 TransportShardBulkAction 执行 // 执行逻辑在父类TransportReplicationAction
+                ); // 交给 TransportShardBulkAction 执行 // 执行逻辑在父类 TransportReplicationAction
                 shardBulkAction.execute(bulkShardRequest, ActionListener.runBefore(new ActionListener<BulkShardResponse>() {
-                    @Override
+                    @Override // 返回结果的时候，将失败的shard也告诉client
                     public void onResponse(BulkShardResponse bulkShardResponse) {
                         for (BulkItemResponse bulkItemResponse : bulkShardResponse.getResponses()) {
                             // we may have no response if item failed

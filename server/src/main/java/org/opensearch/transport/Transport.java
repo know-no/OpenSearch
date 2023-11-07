@@ -56,7 +56,7 @@ import java.util.function.Predicate;
 public interface Transport extends LifecycleComponent {
 
     /**
-     * Registers a new request handler
+     * Registers a new request handler // 注册的registry-》主要在三个地方被获取到：nio的TcpReadWriteHandler和netty的Netty4MessageChannelHandler，transportService的sendLocalRequest
      */
     default <Request extends TransportRequest> void registerRequestHandler(RequestHandlerRegistry<Request> reg) {
         getRequestHandlers().registerHandler(reg);

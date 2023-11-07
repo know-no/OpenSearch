@@ -217,7 +217,7 @@ public abstract class TransportReplicationAction<
             forceExecutionOnPrimary,
             true,
             in -> new ConcreteShardRequest<>(requestReader, in),
-            this::handlePrimaryRequest
+            this::handlePrimaryRequest // 假如这是 shardBulk 的请求，处理主primary shard请求
         );
 
         // we must never reject on because of thread pool capacity on replicas
@@ -244,7 +244,7 @@ public abstract class TransportReplicationAction<
         assert request.shardId() != null : "request shardId must be set";
         runReroutePhase(task, request, listener, true); // 转发到对应的shard上执行
     }
-
+    // bulk的写入操作，转发到 每个请求对应的primary shard上去执行
     private void runReroutePhase(Task task, Request request, ActionListener<Response> listener, boolean initiatedByNodeClient) {
         try {
             new ReroutePhase((ReplicationTask) task, request, listener, initiatedByNodeClient).run();
@@ -828,22 +828,22 @@ public abstract class TransportReplicationAction<
         }
 
         @Override
-        protected void doRun() {
-            setPhase(task, "routing");
-            final ClusterState state = observer.setAndGetObservedState();
+        protected void doRun() { // 0. starting
+            setPhase(task, "routing"); // 1. 开始路由
+            final ClusterState state = observer.setAndGetObservedState();// 获取最新的集群状态
             final ClusterBlockException blockException = blockExceptions(state, request.shardId().getIndexName());
             if (blockException != null) {
                 if (blockException.retryable()) {
                     logger.trace("cluster is blocked, scheduling a retry", blockException);
-                    retry(blockException);
+                    retry(blockException); // 如果集群block此index，那么设置等一会儿重试
                 } else {
                     finishAsFailed(blockException);
                 }
-            } else {
+            } else { // 集群没有阻塞，获取到最新的index metadata
                 final IndexMetadata indexMetadata = state.metadata().index(request.shardId().getIndex());
                 if (indexMetadata == null) {
                     // ensure that the cluster state on the node is at least as high as the node that decided that the index was there
-                    if (state.version() < request.routedBasedOnClusterVersion()) { // 出问题了, 可能此节点还未收到最新的状态
+                    if (state.version() < request.routedBasedOnClusterVersion()) { // 出问题了, 可能此节点还未收到最新的集群状态
                         logger.trace(
                             "failed to find index [{}] for request [{}] despite sender thinking it would be here. "
                                 + "Local cluster state version [{}]] is older than on sending node (version [{}]), scheduling a retry...",
@@ -910,9 +910,9 @@ public abstract class TransportReplicationAction<
                 }
                 final DiscoveryNode node = state.nodes().get(primary.currentNodeId());
                 if (primary.currentNodeId().equals(state.nodes().getLocalNodeId())) {
-                    performLocalAction(state, primary, node, indexMetadata);
-                } else {
-                    performRemoteAction(state, primary, node);
+                    performLocalAction(state, primary, node, indexMetadata); // primary shard就在本地节点
+                } else { // 无论哪个节点，都是发送一样的请求，并且被相同的 handler 处理； -》 加入这是 bulk请求的， shardBulk的请求
+                    performRemoteAction(state, primary, node); // primary shard在其他节点
                 }
             }
         }
@@ -931,9 +931,9 @@ public abstract class TransportReplicationAction<
             }
             performAction(
                 node,
-                transportPrimaryAction, // 加 p 的, 是主shard的请求
-                true,
-                new ConcreteShardRequest<>(
+                transportPrimaryAction, // 加 p 的, 是主shard的请求; 如果是由TransportShardBulkAction触发，则此处是：org.opensearch.action.bulk.BulkAction.NAME
+                true,                   // indices:data/write/bulk + s + [p]
+                new ConcreteShardRequest<>( // 发完一个特定 allocation id的shard的请求封装
                     request,
                     primary.allocationId().getId(),
                     indexMetadata.primaryTerm(primary.id()), // 获取, 不是设置
@@ -978,7 +978,7 @@ public abstract class TransportReplicationAction<
                     primary.currentNodeId()
                 );
             }
-            setPhase(task, "rerouted");
+            setPhase(task, "rerouted"); // 2. 重新路由
             performAction(node, actionName, false, request);
         }
 

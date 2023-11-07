@@ -231,7 +231,7 @@ public class InboundHandler {
                 } else {
                     final StreamInput stream = namedWriteableStream(message.openOrGetStreamInput());
                     assertRemoteVersion(stream, header.getVersion());
-                    final RequestHandlerRegistry<T> reg = requestHandlers.getHandler(action); // 获取到
+                    final RequestHandlerRegistry<T> reg = requestHandlers.getHandler(action); // 获取到内部rpc的handler
                     assert reg != null;
 
                     final T request = newRequest(requestId, action, stream, reg);
