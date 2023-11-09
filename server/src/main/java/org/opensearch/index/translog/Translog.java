@@ -583,7 +583,7 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
      * @param operation the operation to add
      * @return the location of the operation in the translog
      * @throws IOException if adding the operation to the translog resulted in an I/O exception
-     */
+     */ // 添加translog， 并且记录位置
     public Location add(final Operation operation) throws IOException {
         final ReleasableBytesStreamOutput out = new ReleasableBytesStreamOutput(bigArrays);
         try {

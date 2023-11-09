@@ -962,7 +962,7 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
                     index.origin()
                 );
             }
-            result = engine.index(index);
+            result = engine.index(index); // 调用引擎，做索引的地方
             if (logger.isTraceEnabled()) {
                 logger.trace(
                     "index-done [{}][{}] seq# [{}] allocation-id [{}] primaryTerm [{}] operationPrimaryTerm [{}] origin [{}] "
