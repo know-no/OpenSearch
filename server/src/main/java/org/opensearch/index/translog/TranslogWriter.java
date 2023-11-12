@@ -70,7 +70,7 @@ import java.util.function.LongSupplier;
 
 public class TranslogWriter extends BaseTranslogReader implements Closeable {
 
-    private final ShardId shardId;
+    private final ShardId shardId; // 有shardId，说明是shard级别的
     private final FileChannel checkpointChannel;
     private final Path checkpointPath;
     private final BigArrays bigArrays;
@@ -233,12 +233,12 @@ public class TranslogWriter extends BaseTranslogReader implements Closeable {
      */
     public Translog.Location add(final BytesReference data, final long seqNo) throws IOException {
         long bufferedBytesBeforeAdd = this.bufferedBytes;
-        if (bufferedBytesBeforeAdd >= forceWriteThreshold) {
+        if (bufferedBytesBeforeAdd >= forceWriteThreshold) { // 每次add的时候，先判断缓存里的数据大小，需不需要先刷盘
             writeBufferedOps(Long.MAX_VALUE, bufferedBytesBeforeAdd >= forceWriteThreshold * 4);
         }
 
         final Translog.Location location;
-        synchronized (this) {
+        synchronized (this) { // 获取同步锁
             ensureOpen();
             if (buffer == null) {
                 buffer = new ReleasableBytesStreamOutput(bigArrays);
@@ -246,11 +246,11 @@ public class TranslogWriter extends BaseTranslogReader implements Closeable {
             assert bufferedBytes == buffer.size();
             final long offset = totalOffset;
             totalOffset += data.length();
-            data.writeTo(buffer);
+            data.writeTo(buffer); // 写入到buffer里， 即缓冲区
 
             assert minSeqNo != SequenceNumbers.NO_OPS_PERFORMED || operationCounter == 0;
             assert maxSeqNo != SequenceNumbers.NO_OPS_PERFORMED || operationCounter == 0;
-
+            // 获取 tranlog里面的所有操作，中的最小和最大的操作序列
             minSeqNo = SequenceNumbers.min(minSeqNo, seqNo);
             maxSeqNo = SequenceNumbers.max(maxSeqNo, seqNo);
 
@@ -521,12 +521,12 @@ public class TranslogWriter extends BaseTranslogReader implements Closeable {
         }
         return false;
     }
-
+    // 将缓冲区的translog写入到磁盘
     private void writeBufferedOps(long offset, boolean blockOnExistingWriter) throws IOException {
         try (ReleasableLock locked = blockOnExistingWriter ? writeLock.acquire() : writeLock.tryAcquire()) {
             try {
                 if (locked != null && offset > getWrittenOffset()) {
-                    writeAndReleaseOps(pollOpsToWrite());
+                    writeAndReleaseOps(pollOpsToWrite()); // 先获取到哪些需要写入文件系统的，然后写入，写入之后，清空那部分的内存
                 }
             } catch (Exception e) {
                 closeWithTragicEvent(e);
@@ -550,9 +550,9 @@ public class TranslogWriter extends BaseTranslogReader implements Closeable {
     private void writeAndReleaseOps(ReleasableBytesReference toWrite) throws IOException {
         try (ReleasableBytesReference toClose = toWrite) {
             assert writeLock.isHeldByCurrentThread();
-            ByteBuffer ioBuffer = DiskIoBufferPool.getIoBuffer();
-
-            BytesRefIterator iterator = toWrite.iterator();
+            ByteBuffer ioBuffer = DiskIoBufferPool.getIoBuffer();//此刻应该是write，fresh线程，所以应该是DirectByteBuffer
+            //DirectByteBuffer, 底层数据是维护在操作系统内存中，不在jvm，只维护引用地址指向数据。通常从外部设备读取时，jvm从这个外部设备的数据读取到一个内存块，再从这个内存块读取。但是使用DirectByteBuffer 不需要从外部设备读取到内存，可以直接读取。
+            BytesRefIterator iterator = toWrite.iterator(); // 这样的优点是：1. 零拷贝 2. 避免gc压力
             BytesRef current;
             while ((current = iterator.next()) != null) {
                 int currentBytesConsumed = 0;
@@ -562,7 +562,7 @@ public class TranslogWriter extends BaseTranslogReader implements Closeable {
                     currentBytesConsumed += nBytesToWrite;
                     if (ioBuffer.hasRemaining() == false) {
                         ioBuffer.flip();
-                        writeToFile(ioBuffer);
+                        writeToFile(ioBuffer); // 写到FileChannel里面，不过只是写入了，还没刷新；刷新要对FileChannel调用force操作
                         ioBuffer.clear();
                     }
                 }

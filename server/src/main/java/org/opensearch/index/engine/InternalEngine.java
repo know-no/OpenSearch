@@ -1044,8 +1044,8 @@ public class InternalEngine extends Engine {
                             index.isRetry(),
                             index.getIfSeqNo(),
                             index.getIfPrimaryTerm()
-                        );
-
+                        );// processNormally的话，如果 currentNotFoundOrDeleted 为true， 则 useLuceneUpdateDocument 为false， 则toAppend为 true
+                          //                     如果 currentNotFoundOrDeleted 为false， 则 useLuceneUpdateDocument 为true， 则toAppend为 false
                         final boolean toAppend = plan.indexIntoLucene && plan.useLuceneUpdateDocument == false;
                         if (toAppend == false) {
                             advanceMaxSeqNoOfUpdatesOrDeletesOnPrimary(index.seqNo());
@@ -1056,11 +1056,11 @@ public class InternalEngine extends Engine {
 
                     assert index.seqNo() >= 0 : "ops should have an assigned seq no.; origin: " + index.origin();
                     // 写lucene 后一种表示doc过期了或者此次index操作和上次执行的一样
-                    if (plan.indexIntoLucene || plan.addStaleOpToLucene) {
+                    if (plan.indexIntoLucene || plan.addStaleOpToLucene) { // addStale为true，只在非主副本上才可能
                         indexResult = indexIntoLucene(index, plan);
-                    } else { // 不写, why?  在非主shard上的两种策略: processButSkipLucene 和 processAsStaleOp(enableSoft=true)
-                        indexResult = new IndexResult(
-                            plan.versionForIndexing,
+                    } else { // 不写,indexIntoLucene, addStaleOpToLucene都是false。
+                        indexResult = new IndexResult( // 在主上是：skipDueToVersionConflict
+                            plan.versionForIndexing,   // 在非主shard上的两种策略: processButSkipLucene 和 processAsStaleOp(enableSoft=true)
                             index.primaryTerm(),
                             index.seqNo(),
                             plan.currentNotFoundOrDeleted
@@ -1372,7 +1372,7 @@ public class InternalEngine extends Engine {
                 ? Optional.empty()
                 : Optional.of(earlyResultOnPreFlightError);
         }
-
+        //
         static IndexingStrategy optimizedAppendOnly(long versionForIndexing, int reservedDocs) {
             return new IndexingStrategy(true, false, true, false, versionForIndexing, reservedDocs, null);
         }

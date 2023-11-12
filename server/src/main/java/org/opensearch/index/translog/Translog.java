@@ -613,7 +613,7 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
                             + operation
                             + "]"
                     );
-                }
+                } // SeqNo是操作的序列号，用于es的并发控制
                 return current.add(bytes, operation.seqNo());
             }
         } catch (final AlreadyClosedException | IOException ex) {

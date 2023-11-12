@@ -147,7 +147,7 @@ public class ReplicationOperation<
         pendingActions.incrementAndGet(); // increase by 1 until we finish all primary coordination
         primary.perform(request, ActionListener.wrap(this::handlePrimaryResult, this::finishAsFailed));//这里会回调,处理副本们的写
     }  // PrimaryShardReference#perform
-
+    // 当主shard上处理好之后，将主shard的处理结果，合并请求转发到replica。
     private void handlePrimaryResult(final PrimaryResultT primaryResult) {
         this.primaryResult = primaryResult;
         final ReplicaRequest replicaRequest = primaryResult.replicaRequest();
@@ -207,7 +207,7 @@ public class ReplicationOperation<
             );
         }
     }
-
+    // 开始对其他节点上的副本操作
     private void performOnReplicas(
         final ReplicaRequest replicaRequest,
         final long globalCheckpoint,
@@ -243,8 +243,8 @@ public class ReplicationOperation<
         final ActionListener<ReplicaResponse> replicationListener = new ActionListener<ReplicaResponse>() {
             @Override
             public void onResponse(ReplicaResponse response) {
-                successfulShards.incrementAndGet();
-                try {
+                successfulShards.incrementAndGet(); // 每次成功一个副本，就增加一下计数器
+                try { // 并且，尝试更新 checkpoint
                     updateCheckPoints(shard, response::localCheckpoint, response::globalCheckpoint);
                 } finally {
                     decPendingAndFinishIfNeeded();
@@ -320,7 +320,7 @@ public class ReplicationOperation<
                     || cause instanceof ConnectTransportException;
             }
         };
-
+        // 放到pending里面去
         pendingReplicationActions.addPendingAction(allocationId, replicationAction);
         replicationAction.run();
     }

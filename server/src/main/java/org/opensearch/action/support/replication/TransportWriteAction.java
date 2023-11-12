@@ -473,7 +473,7 @@ public abstract class TransportWriteAction<
                     maybeFinish(); // Niubi
                 });
             }
-            if (sync) { // 需要 Request 级别的同步tranlog
+            if (sync) { // 需要 Request 级别的同步translog
                 assert pendingOps.get() > 0;
                 indexShard.sync(location, (ex) -> {
                     syncFailure.set(ex);

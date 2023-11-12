@@ -521,7 +521,7 @@ public abstract class TransportReplicationAction<
                         primaryRequest.getRequest(),
                         primaryShardReference,
                         ActionListener.map(responseListener, result -> result.finalResponseIfSuccessful),
-                        newReplicasProxy(), // 封装了所有 关于副本的 写/异常处理
+                        newReplicasProxy(), // 封装了所有 关于副本的 写/异常处理， 作为副本接口的实现，来代替执行实际的请求
                         logger,
                         threadPool,
                         actionName,
