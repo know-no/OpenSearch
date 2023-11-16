@@ -216,7 +216,7 @@ public class Store extends AbstractIndexShardComponent implements Closeable, Ref
     public SegmentInfos readLastCommittedSegmentsInfo() throws IOException {
         failIfCorrupted();
         try {
-            return readSegmentsInfo(null, directory());
+            return readSegmentsInfo(null, directory());//读取最后一次的提交的信息
         } catch (CorruptIndexException | IndexFormatTooOldException | IndexFormatTooNewException ex) {
             markStoreCorrupted(ex);
             throw ex;
@@ -618,7 +618,7 @@ public class Store extends AbstractIndexShardComponent implements Closeable, Ref
 
     public void failIfCorrupted() throws IOException {
         ensureOpen();
-        failIfCorrupted(directory);
+        failIfCorrupted(directory);//判断文件是否有被损坏
     }
 
     private static void failIfCorrupted(Directory directory) throws IOException {

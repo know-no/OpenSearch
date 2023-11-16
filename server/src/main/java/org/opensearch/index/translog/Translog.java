@@ -122,9 +122,9 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
      */
     public static final String TRANSLOG_UUID_KEY = "translog_uuid";
     public static final String TRANSLOG_FILE_PREFIX = "translog-";
-    public static final String TRANSLOG_FILE_SUFFIX = ".tlog";
-    public static final String CHECKPOINT_SUFFIX = ".ckp";
-    public static final String CHECKPOINT_FILE_NAME = "translog" + CHECKPOINT_SUFFIX;
+    public static final String TRANSLOG_FILE_SUFFIX = ".tlog"; // translog文件的后缀， 见org.opensearch.index.translog.Translog.getFilename
+    public static final String CHECKPOINT_SUFFIX = ".ckp"; // 见 getCommitCheckpointFileName ，translog-N.ckp是已提交的,区别于未提交的 tranlog.ckp
+    public static final String CHECKPOINT_FILE_NAME = "translog" + CHECKPOINT_SUFFIX; // 保存checkpoint的文件， tranlog.ckp
 
     static final Pattern PARSE_STRICT_ID_PATTERN = Pattern.compile("^" + TRANSLOG_FILE_PREFIX + "(\\d+)(\\.tlog)$");
     public static final int DEFAULT_HEADER_SIZE_IN_BYTES = TranslogHeader.headerSizeInBytes(UUIDs.randomBase64UUID());

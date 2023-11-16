@@ -457,7 +457,7 @@ public class IndexService extends AbstractIndexComponent implements IndicesClust
                 // TODO: we should, instead, hold a "bytes reserved" of how large we anticipate this shard will be, e.g. for a shard
                 // that's being relocated/replicated we know how large it will become once it's done copying:
                 // Count up how many shards are currently on each data path:
-                Map<Path, Integer> dataPathToShardCount = new HashMap<>();
+                Map<Path, Integer> dataPathToShardCount = new HashMap<>(); // 计算下每个路径下的 xx 个数
                 for (IndexShard shard : this) {
                     Path dataPath = shard.shardPath().getRootStatePath();
                     Integer curCount = dataPathToShardCount.get(dataPath);
@@ -486,9 +486,9 @@ public class IndexService extends AbstractIndexComponent implements IndicesClust
 
             logger.debug("creating shard_id {}", shardId);
             // if we are on a shared FS we only own the shard (ie. we can safely delete it) if we are the primary.
-            final Engine.Warmer engineWarmer = (reader) -> {
-                IndexShard shard = getShardOrNull(shardId.getId());
-                if (shard != null) {
+            final Engine.Warmer engineWarmer = (reader) -> { //上面这行注释与很久以前的一个功能，影子复制有关，看它的提交pr
+                IndexShard shard = getShardOrNull(shardId.getId()); //todo 什么情况下，会提前被创建出shard来？看起来应该是影子复制功能
+                if (shard != null) {                                // 其他节点由于和主节点共享存储，所以获取到主节点已经创建好的shard
                     warmer.warm(reader, shard, IndexService.this.indexSettings);
                 }
             };

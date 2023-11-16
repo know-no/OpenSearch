@@ -338,7 +338,7 @@ final class StoreRecovery {
             // got closed on us, just ignore this recovery
             return false;
         }
-        if (indexShard.routingEntry().primary() == false) {
+        if (indexShard.routingEntry().primary() == false) { // 说明 StoreRecovery 是不能recover 副本的
             throw new IndexShardRecoveryException(shardId, "Trying to recover when the shard is in backup state", null);
         }
         return true;
@@ -425,7 +425,7 @@ final class StoreRecovery {
 
     /**
      * Recovers the state of the shard from the store.
-     */
+     */ // 整个方法都没有数据传输的部分，说明 peer， snapshot 没有用这个方法
     private void internalRecoverFromStore(IndexShard indexShard) throws IndexShardRecoveryException {
         indexShard.preRecovery();
         final RecoveryState recoveryState = indexShard.recoveryState();
@@ -464,13 +464,13 @@ final class StoreRecovery {
                 }
             } catch (Exception e) {
                 throw new IndexShardRecoveryException(shardId, "failed to fetch index version after copying it over", e);
-            }
+            } // 分支1:从同一个机器节点上的其他进程的shards恢复
             if (recoveryState.getRecoverySource().getType() == RecoverySource.Type.LOCAL_SHARDS) {
                 assert indexShouldExists;
                 bootstrap(indexShard, store);
                 writeEmptyRetentionLeasesFile(indexShard);
-            } else if (indexShouldExists) {
-                if (recoveryState.getRecoverySource().shouldBootstrapNewHistoryUUID()) {
+            } else if (indexShouldExists) { // 如果不是分支1， 分之1其实是一种特例。分支2：索引应该存在，除了empty外，这个值都是true
+                if (recoveryState.getRecoverySource().shouldBootstrapNewHistoryUUID()) { //todo 我们暂时忽略分支2
                     store.bootstrapNewHistory();
                     writeEmptyRetentionLeasesFile(indexShard);
                 }
@@ -484,7 +484,7 @@ final class StoreRecovery {
                     logger.debug("failed to list file details", e);
                 }
                 index.setFileDetailsComplete();
-            } else {
+            } else { // 主打的是从0创建
                 store.createEmpty(indexShard.indexSettings().getIndexVersionCreated().luceneVersion);
                 final String translogUUID = Translog.createEmptyTranslog(
                     indexShard.shardPath().resolveTranslog(),
@@ -494,11 +494,11 @@ final class StoreRecovery {
                 );
                 store.associateIndexWithNewTranslog(translogUUID);
                 writeEmptyRetentionLeasesFile(indexShard);
-                indexShard.recoveryState().getIndex().setFileDetailsComplete();
+                indexShard.recoveryState().getIndex().setFileDetailsComplete();//全局搜：恢复步骤 index状态，补充一些细节状态
             }
             indexShard.openEngineAndRecoverFromTranslog();
             indexShard.getEngine().fillSeqNoGaps(indexShard.getPendingPrimaryTerm());
-            indexShard.finalizeRecovery();
+            indexShard.finalizeRecovery();//全局搜：恢复步骤 finalize状态 0
             indexShard.postRecovery("post recovery from shard_store");
         } catch (EngineException | IOException e) {
             throw new IndexShardRecoveryException(shardId, "failed to recover from gateway", e);

@@ -707,7 +707,7 @@ public class IndicesService extends AbstractLifecycleComponent
         final IndexModule indexModule = new IndexModule(
             idxSettings,
             analysisRegistry,
-            getEngineFactory(idxSettings),
+            getEngineFactory(idxSettings), // 插件层可以用自定义的engine来替代lucene，或者改变写入查询的接口行为
             getEngineConfigFactory(idxSettings),
             directoryFactories,
             () -> allowExpensiveQueries,
@@ -845,12 +845,12 @@ public class IndicesService extends AbstractLifecycleComponent
         Objects.requireNonNull(retentionLeaseSyncer);
         ensureChangesAllowed();
         IndexService indexService = indexService(shardRouting.index());
-        assert indexService != null;
-        RecoveryState recoveryState = indexService.createRecoveryState(shardRouting, targetNode, sourceNode);
+        assert indexService != null; // 因为上一步一定已经创建过indexService
+        RecoveryState recoveryState = indexService.createRecoveryState(shardRouting, targetNode, sourceNode);//全局搜：恢复步骤 init状态
         IndexShard indexShard = indexService.createShard(shardRouting, globalCheckpointSyncer, retentionLeaseSyncer);
-        indexShard.addShardFailureCallback(onShardFailure);
+        indexShard.addShardFailureCallback(onShardFailure); // 可以看到，就算是新建shard，也是走的恢复接口
         indexShard.startRecovery(recoveryState, recoveryTargetService, recoveryListener, repositoriesService, (type, mapping) -> {
-            assert recoveryState.getRecoverySource().getType() == RecoverySource.Type.LOCAL_SHARDS
+            assert recoveryState.getRecoverySource().getType() == RecoverySource.Type.LOCAL_SHARDS // 恢复
                 : "mapping update consumer only required by local shards recovery";
             client.admin()
                 .indices()

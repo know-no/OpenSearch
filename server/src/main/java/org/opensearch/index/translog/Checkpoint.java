@@ -60,7 +60,7 @@ final class Checkpoint {
     final long generation;
     final long minSeqNo;
     final long maxSeqNo;
-    final long globalCheckpoint;
+    final long globalCheckpoint; // todo checkpoint 里怎么没有local的checkpoint
     final long minTranslogGeneration;
     final long trimmedAboveSeqNo;
 

@@ -318,7 +318,7 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
         final CircuitBreakerService circuitBreakerService
     ) throws IOException {
         super(shardRouting.shardId(), indexSettings);
-        assert shardRouting.initializing();
+        assert shardRouting.initializing(); // 此时shardRouting的状态还是initializing ，UNASSIGNED((byte) 1),INITIALIZING((byte) 2),STARTED((byte) 3),RELOCATING((byte) 4);
         this.shardRouting = shardRouting;
         final Settings settings = indexSettings.getSettings();
         this.codecService = new CodecService(mapperService, logger);
@@ -1668,7 +1668,7 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
         if (state != IndexShardState.RECOVERING) {
             throw new IndexShardNotRecoveringException(shardId, state);
         }
-        recoveryState.setStage(RecoveryState.Stage.INDEX);
+        recoveryState.setStage(RecoveryState.Stage.INDEX);//全局搜：恢复步骤 index状态
         assert currentEngineReference.get() == null;
     }
 
@@ -1906,10 +1906,10 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
      **/
     public void openEngineAndRecoverFromTranslog() throws IOException {
         recoveryState.validateCurrentStage(RecoveryState.Stage.INDEX);
-        maybeCheckIndex();
-        recoveryState.setStage(RecoveryState.Stage.TRANSLOG);
+        maybeCheckIndex();//全局搜：恢复步骤 verity状态
+        recoveryState.setStage(RecoveryState.Stage.TRANSLOG);//全局搜：恢复步骤 Translog状态
         final RecoveryState.Translog translogRecoveryStats = recoveryState.getTranslog();
-        final Engine.TranslogRecoveryRunner translogRecoveryRunner = (engine, snapshot) -> {
+        final Engine.TranslogRecoveryRunner translogRecoveryRunner = (engine, snapshot) -> {//Transport.snapshot,不是索引备份的snapshot
             translogRecoveryStats.totalOperations(snapshot.totalOperations());
             translogRecoveryStats.totalOperationsOnStart(snapshot.totalOperations());
             return runTranslogRecovery(
@@ -2036,7 +2036,7 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
      * note that you should still call {@link #postRecovery(String)}.
      */
     public void finalizeRecovery() {
-        recoveryState().setStage(RecoveryState.Stage.FINALIZE);
+        recoveryState().setStage(RecoveryState.Stage.FINALIZE);//全局搜：恢复步骤 finalize状态 1
         Engine engine = getEngine();
         engine.refresh("recovery_finalization");
         engine.config().setEnableGcDeletes(true);
@@ -2968,7 +2968,7 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
         assert recoveryState.getRecoverySource().equals(shardRouting.recoverySource());
         switch (recoveryState.getRecoverySource().getType()) {
             case EMPTY_STORE:
-            case EXISTING_STORE:
+            case EXISTING_STORE: // generic 线程执行
                 executeRecovery("from store", recoveryState, recoveryListener, this::recoverFromStore);
                 break;
             case PEER:
@@ -3055,7 +3055,7 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
         PeerRecoveryTargetService.RecoveryListener recoveryListener,
         CheckedConsumer<ActionListener<Boolean>, Exception> action
     ) {
-        markAsRecovering(reason, recoveryState); // mark the shard as recovering on the cluster state thread
+        markAsRecovering(reason, recoveryState); // mark the shard as recovering on the cluster state thread // 等于是在通知和修改集群状态
         threadPool.generic().execute(ActionRunnable.wrap(ActionListener.wrap(r -> {
             if (r) {
                 recoveryListener.onRecoveryDone(recoveryState);

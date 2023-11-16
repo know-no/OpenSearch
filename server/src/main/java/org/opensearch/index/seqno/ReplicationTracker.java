@@ -79,7 +79,7 @@ import java.util.stream.Collectors;
 import java.util.stream.LongStream;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
-
+// 追踪整个replication 组， 记录他们的被安全持久化 的数据的位置
 /**
  * This class is responsible for tracking the replication group with its progress and safety markers (local and global checkpoints).
  *

@@ -47,9 +47,9 @@ import org.opensearch.snapshots.Snapshot;
 
 import java.io.IOException;
 import java.util.Objects;
-
-/**
- * Represents the recovery source of a shard. Available recovery types are:
+//shard的恢复有两个角度思考：1. 数据完整性 2. 分布式一致性； 前者是写入文件系统还没有刷到磁盘的数据，需要找回；后者是副本分片恢复到和主副本相同
+/** // 更细的角度，还有：主节点刚写入数据X，但是所有副本都没写。然后主节点失败，后面某个没有数据X的副本提升为主，而当之前的主节点回到集群里，可能需要撤销X的写入
+ * Represents the recovery source of a shard. Available recovery types are: // 或者，重新拉段文件，重新同步
  *
  * - {@link EmptyStoreRecoverySource} recovery from an empty store
  * - {@link ExistingStoreRecoverySource} recovery from an existing store

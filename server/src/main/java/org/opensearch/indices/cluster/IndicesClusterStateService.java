@@ -258,10 +258,10 @@ public class IndicesClusterStateService extends AbstractLifecycleComponent imple
 
         updateIndices(event); // can also fail shards, but these are then guaranteed to be in failedShardsCache
 
-        createIndices(state);
+        createIndices(state); // 创建 indexService， 创建对应的EngineFactory 等
 
-        createOrUpdateShards(state);
-    }
+        createOrUpdateShards(state);// 可以用来恢复/创建shard
+    }   // 如果是恢复shard：createOrUpdateShards -》 createShard -》 indicesService.createShard -》 indexShard.startRecovery
 
     /**
      * Removes shard entries from the failed shards cache that are no longer allocated to this node by the master.
@@ -582,19 +582,19 @@ public class IndicesClusterStateService extends AbstractLifecycleComponent imple
         }
     }
 
-    private void createOrUpdateShards(final ClusterState state) {
+    private void createOrUpdateShards(final ClusterState state) { // 根据集群状态，查看master需要本节点做什么
         RoutingNode localRoutingNode = state.getRoutingNodes().node(state.nodes().getLocalNodeId());
-        if (localRoutingNode == null) {
+        if (localRoutingNode == null) { //
             return;
         }
 
         DiscoveryNodes nodes = state.nodes();
         RoutingTable routingTable = state.routingTable();
-
+        // RoutingNode -》 ShardRouting
         for (final ShardRouting shardRouting : localRoutingNode) {
             ShardId shardId = shardRouting.shardId();
-            if (failedShardsCache.containsKey(shardId) == false) {
-                AllocatedIndex<? extends Shard> indexService = indicesService.indexService(shardId.getIndex());
+            if (failedShardsCache.containsKey(shardId) == false) { // 如果不是创建/恢复失败的shard
+                AllocatedIndex<? extends Shard> indexService = indicesService.indexService(shardId.getIndex()); // 上上一步创建的
                 assert indexService != null : "index " + shardId.getIndex() + " should have been created by createIndices";
                 Shard shard = indexService.getShardOrNull(shardId.id());
                 if (shard == null) {
@@ -606,11 +606,11 @@ public class IndicesClusterStateService extends AbstractLifecycleComponent imple
             }
         }
     }
-
+    // 创建shard也有多种可能的情况：
     private void createShard(DiscoveryNodes nodes, RoutingTable routingTable, ShardRouting shardRouting, ClusterState state) {
         assert shardRouting.initializing() : "only allow shard creation for initializing shard but was " + shardRouting;
 
-        DiscoveryNode sourceNode = null;
+        DiscoveryNode sourceNode = null; // 分片的恢复有五种情况，其中的PEER是分片的恢复；其他有：重零创建（第一次），以及。。。
         if (shardRouting.recoverySource().getType() == Type.PEER) {
             sourceNode = findSourceNodeForPeerRecovery(logger, routingTable, nodes, shardRouting);
             if (sourceNode == null) {
@@ -619,7 +619,7 @@ public class IndicesClusterStateService extends AbstractLifecycleComponent imple
             }
         }
 
-        try {
+        try { // 获取这个shardRouting的term，此shardRouting可能是 primary 或者 是副本
             final long primaryTerm = state.metadata().index(shardRouting.index()).primaryTerm(shardRouting.id());
             logger.debug("{} creating shard with primary term [{}]", shardRouting.shardId(), primaryTerm);
             indicesService.createShard(
@@ -628,8 +628,8 @@ public class IndicesClusterStateService extends AbstractLifecycleComponent imple
                 new RecoveryListener(shardRouting, primaryTerm),
                 repositoriesService,
                 failedShardHandler,
-                globalCheckpointSyncer,
-                retentionLeaseSyncer,
+                globalCheckpointSyncer, // 用来更新 checkpoint
+                retentionLeaseSyncer, // 用来更新 租约
                 nodes.getLocalNode(),
                 sourceNode
             );
@@ -712,7 +712,7 @@ public class IndicesClusterStateService extends AbstractLifecycleComponent imple
         ShardRouting shardRouting
     ) {
         DiscoveryNode sourceNode = null;
-        if (!shardRouting.primary()) {
+        if (!shardRouting.primary()) { //此刻是副本分片的节点在调用，找到主shardRouting
             ShardRouting primary = routingTable.shardRoutingTable(shardRouting.shardId()).primaryShard();
             // only recover from started primary, if we can't find one, we will do it next round
             if (primary.active()) {
@@ -723,9 +723,9 @@ public class IndicesClusterStateService extends AbstractLifecycleComponent imple
             } else {
                 logger.trace("can't find replica source node because primary shard {} is not active.", primary);
             }
-        } else if (shardRouting.relocatingNodeId() != null) {
-            sourceNode = nodes.get(shardRouting.relocatingNodeId());
-            if (sourceNode == null) {
+        } else if (shardRouting.relocatingNodeId() != null) {//如果是primary分片的节点在调用,!=null的状态说明主shard在做迁移
+            sourceNode = nodes.get(shardRouting.relocatingNodeId()); // 虽然也是primary分片，但是是正在做迁移恢复的target
+            if (sourceNode == null) {   // 调用 relocatingNodeId，获得到的是 当前正在往其他节点上迁移的 primary 分片
                 logger.trace(
                     "can't find relocation source node for shard {} because it is assigned to an unknown node [{}].",
                     shardRouting.shardId(),
