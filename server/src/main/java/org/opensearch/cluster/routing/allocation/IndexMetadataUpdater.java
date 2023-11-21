@@ -267,7 +267,7 @@ public class IndexMetadataUpdater extends RoutingChangesObserver.AbstractRouting
         return indexMetadataBuilder;
     }
 
-    /**
+    /** // 可以构建一个新的state，来把 StaleShard 从 routing table 里删除，但是还没真的开始执行。
      * Removes allocation ids from the in-sync set for shard copies for which there is no routing entries in the routing table.
      * This method is called in AllocationService before any changes to the routing table are made.
      */

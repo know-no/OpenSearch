@@ -475,7 +475,7 @@ public class IndexMetadata implements Diffable<IndexMetadata>, ToXContentFragmen
 
     private final ImmutableOpenMap<String, DiffableStringMap> customData;
 
-    private final ImmutableOpenIntMap<Set<String>> inSyncAllocationIds;
+    private final ImmutableOpenIntMap<Set<String>> inSyncAllocationIds;//(in-sync allocation IDs)包含最新数据副本的子集
 
     private final transient int totalNumberOfShards;
 
@@ -739,7 +739,7 @@ public class IndexMetadata implements Diffable<IndexMetadata>, ToXContentFragmen
         return rolloverInfos;
     }
 
-    public Set<String> inSyncAllocationIds(int shardId) {
+    public Set<String> inSyncAllocationIds(int shardId) { // (in-sync allocation IDs) 获取到这个shard的所有具有最新数据的副本集合
         assert shardId >= 0 && shardId < numberOfShards;
         return inSyncAllocationIds.get(shardId);
     }

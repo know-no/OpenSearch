@@ -79,7 +79,7 @@ import java.util.stream.Collectors;
 import java.util.stream.LongStream;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
-// 追踪整个replication 组， 记录他们的被安全持久化 的数据的位置
+//追踪整个replication组,记录他们的被安全持久化 的数据的位置.根据commit：7f8e1454的info 会追踪the persisted local and persisted global checkpoints of all shard copies when in primary mode.
 /**
  * This class is responsible for tracking the replication group with its progress and safety markers (local and global checkpoints).
  *

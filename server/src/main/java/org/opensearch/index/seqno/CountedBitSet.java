@@ -39,7 +39,7 @@ import org.apache.lucene.util.RamUsageEstimator;
  * A {@link CountedBitSet} wraps a {@link FixedBitSet} but automatically releases the internal bitset
  * when all bits are set to reduce memory usage. This structure can work well for sequence numbers as
  * these numbers are likely to form contiguous ranges (eg. filling all bits).
- */
+ */ // 就是一个FixedBitSet， 很适用于seqNo，因为seqNo这些数字容易形成连续的范围
 public final class CountedBitSet {
     static final long BASE_RAM_BYTES_USED = RamUsageEstimator.shallowSizeOfInstance(CountedBitSet.class);
     private short onBits; // Number of bits are set.

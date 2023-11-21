@@ -60,7 +60,7 @@ public class RecoveryRequestTracker {
      * return null and the caller should not perform the requested action as a prior caller is already
      * performing the action.
      */
-    @Nullable
+    @Nullable // 主要是为了处理网络重连的情况吧
     public synchronized ActionListener<Void> markReceivedAndCreateListener(long requestSeqNo, ActionListener<Void> listener) {
         if (checkpointTracker.hasProcessed(requestSeqNo)) {
             final ListenableFuture<Void> existingFuture = ongoingRequests.get(requestSeqNo);

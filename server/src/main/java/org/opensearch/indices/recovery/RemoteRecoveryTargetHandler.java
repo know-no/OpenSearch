@@ -336,7 +336,7 @@ public class RemoteRecoveryTargetHandler implements RecoveryTargetHandler {
             @Override
             public void tryAction(ActionListener<T> listener) {
                 transportService.sendRequest(
-                    targetNode,
+                    targetNode, // 向peer发送
                     action,
                     request,
                     options,

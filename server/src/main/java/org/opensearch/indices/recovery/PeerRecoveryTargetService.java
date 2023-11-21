@@ -128,7 +128,7 @@ public class PeerRecoveryTargetService implements IndexEventListener {
         this.recoverySettings = recoverySettings;
         this.clusterService = clusterService;
         this.onGoingRecoveries = new RecoveriesCollection(logger, threadPool);
-
+        // 疯狂注册：recover 所需要的动作
         transportService.registerRequestHandler(
             Actions.FILES_INFO,
             ThreadPool.Names.GENERIC,
@@ -477,7 +477,7 @@ public class PeerRecoveryTargetService implements IndexEventListener {
             );
         }
     }
-
+    // peer收到来自primary 发来的“文件info”
     class FilesInfoRequestHandler implements TransportRequestHandler<RecoveryFilesInfoRequest> {
 
         @Override

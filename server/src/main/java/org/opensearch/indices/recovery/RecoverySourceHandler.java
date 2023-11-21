@@ -168,7 +168,7 @@ public class RecoverySourceHandler {
     public void recoverToTarget(ActionListener<RecoveryResponse> listener) {
         addListener(listener);
         final Closeable releaseResources = () -> IOUtils.close(resources);
-        try {
+        try { // 设置如果取消的话，的后置动作
             cancellableThreads.setOnCancel((reason, beforeCancelEx) -> {
                 final RuntimeException e;
                 if (shard.state() == IndexShardState.CLOSED) { // check if the shard got closed on us
@@ -190,7 +190,7 @@ public class RecoverySourceHandler {
             final boolean softDeletesEnabled = shard.indexSettings().isSoftDeleteEnabled();
             final SetOnce<RetentionLease> retentionLeaseRef = new SetOnce<>();
 
-            runUnderPrimaryPermit(() -> {
+            runUnderPrimaryPermit(() -> {//1. 获取group 2. 获取副本想要拷贝的shardRouting，即主shard的allocationId 3. 获取这个分片的保留租约
                 final IndexShardRoutingTable routingTable = shard.getReplicationGroup().getRoutingTable();
                 ShardRouting targetShardRouting = routingTable.getByAllocationId(request.targetAllocationId());
                 if (targetShardRouting == null) {
@@ -202,7 +202,7 @@ public class RecoverySourceHandler {
                     throw new DelayRecoveryException("source node does not have the shard listed in its state as allocated on the node");
                 }
                 assert targetShardRouting.initializing() : "expected recovery target to be initializing but was " + targetShardRouting;
-                retentionLeaseRef.set(
+                retentionLeaseRef.set( // 分配需要保留的租约
                     shard.getRetentionLeases().get(ReplicationTracker.getPeerRecoveryRetentionLeaseId(targetShardRouting))
                 );
             },
@@ -211,18 +211,18 @@ public class RecoverySourceHandler {
                 cancellableThreads,
                 logger
             );
-            final Engine.HistorySource historySource;
+            final Engine.HistorySource historySource;//选定操作历史来源
             if (softDeletesEnabled && (shard.useRetentionLeasesInPeerRecovery() || retentionLeaseRef.get() != null)) {
-                historySource = Engine.HistorySource.INDEX;
+                historySource = Engine.HistorySource.INDEX;//开启了软删除，并且使用租约的，可以使用lucene的操作历史来恢复
             } else {
                 historySource = Engine.HistorySource.TRANSLOG;
-            }
+            } // 首先获取一个 保留锁， 防止translog 被删除
             final Closeable retentionLock = shard.acquireHistoryRetentionLock(historySource);
             resources.add(retentionLock);
-            final long startingSeqNo;
+            final long startingSeqNo;//能够基于序列号开始恢复的条件是：
             final boolean isSequenceNumberBasedRecovery = request.startingSeqNo() != SequenceNumbers.UNASSIGNED_SEQ_NO
                 && isTargetSameHistory()
-                && shard.hasCompleteHistoryOperations("peer-recovery", historySource, request.startingSeqNo())
+                && shard.hasCompleteHistoryOperations("peer-recovery", historySource, request.startingSeqNo())//判断选择恢复源中，是否具有需要的数据
                 && (historySource == Engine.HistorySource.TRANSLOG
                     || (retentionLeaseRef.get() != null && retentionLeaseRef.get().retainingSequenceNumber() <= request.startingSeqNo()));
             // NB check hasCompleteHistoryOperations when computing isSequenceNumberBasedRecovery, even if there is a retention lease,
@@ -230,7 +230,7 @@ public class RecoverySourceHandler {
             // possible there are other cases where we cannot satisfy all leases, because that's not a property we currently expect to hold.
             // Also it's pretty cheap when soft deletes are enabled, and it'd be a disaster if we tried a sequence-number-based recovery
             // without having a complete history.
-
+            // 需要的资源本省就在租约内
             if (isSequenceNumberBasedRecovery && softDeletesEnabled && retentionLeaseRef.get() != null) {
                 // all the history we need is retained by an existing retention lease, so we do not need a separate retention lock
                 retentionLock.close();
@@ -246,11 +246,11 @@ public class RecoverySourceHandler {
             final StepListener<TimeValue> prepareEngineStep = new StepListener<>();
             final StepListener<SendSnapshotResult> sendSnapshotStep = new StepListener<>();
             final StepListener<Void> finalizeStep = new StepListener<>();
-
+            // 可以基于序列号恢复， 那么就可以跳过 副本恢复 的phase 1 // 如果不可以，则需要调用lucene的接口开始拷贝数据了
             if (isSequenceNumberBasedRecovery) {
                 logger.trace("performing sequence numbers based recovery. starting at [{}]", request.startingSeqNo());
                 startingSeqNo = request.startingSeqNo();
-                if (retentionLeaseRef.get() == null) {
+                if (retentionLeaseRef.get() == null) { // 没有保留租约，那就创建一个出来
                     createRetentionLease(startingSeqNo, ActionListener.map(sendFileStep, ignored -> SendFileResult.EMPTY));
                 } else {
                     sendFileStep.onResponse(SendFileResult.EMPTY);
@@ -258,12 +258,12 @@ public class RecoverySourceHandler {
             } else {
                 final Engine.IndexCommitRef safeCommitRef;
                 try {
-                    safeCommitRef = acquireSafeCommit(shard);
+                    safeCommitRef = acquireSafeCommit(shard); // 选择一个commit点
                     resources.add(safeCommitRef);
                 } catch (final Exception e) {
                     throw new RecoveryEngineException(shard.shardId(), 1, "snapshot failed", e);
                 }
-
+                // 这里好像还有一个小优化，即考虑到如果一个peer后期被提升为primary的情况，那么就需要它能够为其他需要恢复的peer提供尽可能多的operation
                 // Try and copy enough operations to the recovering peer so that if it is promoted to primary then it has a chance of being
                 // able to recover other replicas using operations-based recoveries. If we are not using retention leases then we
                 // conservatively copy all available operations. If we are using retention leases then "enough operations" is just the
@@ -276,10 +276,10 @@ public class RecoverySourceHandler {
                 // down.
                 startingSeqNo = softDeletesEnabled
                     ? Long.parseLong(safeCommitRef.getIndexCommit().getUserData().get(SequenceNumbers.LOCAL_CHECKPOINT_KEY)) + 1L
-                    : 0;
+                    : 0; // 这里就需要修改 startingSeqNo，如果开启了soft，则变为从用户的安全提交点后+ 1 否则是0，快照完整 的translog
                 logger.trace("performing file-based recovery followed by history replay starting at [{}]", startingSeqNo);
 
-                try {
+                try { // 计算出 从historySource里，从startingSeqNo开始有多少操作
                     final int estimateNumOps = shard.estimateNumberOfHistoryOperations("peer-recovery", historySource, startingSeqNo);
                     final Releasable releaseStore = acquireStore(shard.store());
                     resources.add(releaseStore);
@@ -293,7 +293,7 @@ public class RecoverySourceHandler {
 
                     final StepListener<ReplicationResponse> deleteRetentionLeaseStep = new StepListener<>();
                     runUnderPrimaryPermit(() -> {
-                        try {
+                        try { //todo 全局检查点的回退？
                             // If the target previously had a copy of this shard then a file-based recovery might move its global
                             // checkpoint backwards. We must therefore remove any existing retention lease so that we can create a
                             // new one later on in the recovery.
@@ -415,7 +415,7 @@ public class RecoverySourceHandler {
             : "incoming target history N/A but index was created after or on 6.0.0-rc1";
         return targetHistoryUUID != null && targetHistoryUUID.equals(shard.getHistoryUUID());
     }
-
+    // permit是什么
     static void runUnderPrimaryPermit(
         CancellableThreads.Interruptible runnable,
         String reason,
@@ -538,7 +538,7 @@ public class RecoverySourceHandler {
      * Perform phase1 of the recovery operations. Once this {@link IndexCommit}
      * snapshot has been performed no commit operations (files being fsync'd)
      * are effectively allowed on this index until all recovery phases are done
-     * <p>
+     * <p> // 阶段一执行的时候，primary是不能commit的
      * Phase1 examines the segment files on the target node and copies over the
      * segments that are missing. Only segments that have the same size and
      * checksum can be reused
@@ -566,12 +566,12 @@ public class RecoverySourceHandler {
                         name
                     );
                 }
-            }
+            } // 尝试跳过phase 1:  如果两边的 synId 不等，是坚决不能跳的 2. 如果synId相同，doc数相同就可以
             if (canSkipPhase1(recoverySourceMetadata, request.metadataSnapshot()) == false) {
-                final List<String> phase1FileNames = new ArrayList<>();
-                final List<Long> phase1FileSizes = new ArrayList<>();
-                final List<String> phase1ExistingFileNames = new ArrayList<>();
-                final List<Long> phase1ExistingFileSizes = new ArrayList<>();
+                final List<String> phase1FileNames = new ArrayList<>(); // phase1阶段需要同步的文件个数
+                final List<Long> phase1FileSizes = new ArrayList<>();// 每个文件的大小
+                final List<String> phase1ExistingFileNames = new ArrayList<>(); // phase1阶段已经存在的文件names
+                final List<Long> phase1ExistingFileSizes = new ArrayList<>();// 已经存在的文件的大小
 
                 // Total size of segment files that are recovered
                 long totalSizeInBytes = 0;
@@ -580,7 +580,7 @@ public class RecoverySourceHandler {
 
                 // Generate a "diff" of all the identical, different, and missing
                 // segment files on the target node, using the existing files on
-                // the source node
+                // the source node // diff一下，看哪些文件是已有的，不需要的，哪些是不同的，需要删掉的
                 final Store.RecoveryDiff diff = recoverySourceMetadata.recoveryDiff(request.metadataSnapshot());
                 for (StoreFileMetadata md : diff.identical) {
                     phase1ExistingFileNames.add(md.name());
@@ -627,15 +627,15 @@ public class RecoverySourceHandler {
                 final StepListener<RetentionLease> createRetentionLeaseStep = new StepListener<>();
                 final StepListener<Void> cleanFilesStep = new StepListener<>();
                 cancellableThreads.checkForCancel();
-                recoveryTarget.receiveFileInfo(
-                    phase1FileNames,
+                recoveryTarget.receiveFileInfo( // 根据代码流程，可以看到是：RemoteRecoveryTargetHandler
+                    phase1FileNames, // primary向 peer 发送 fileInfo
                     phase1FileSizes,
                     phase1ExistingFileNames,
                     phase1ExistingFileSizes,
                     translogOps.getAsInt(),
                     sendFileInfoStep
                 );
-
+                // 为它注册一个只会被调用一次的 回调。 即fileInfo发送完成后，开始发送 阶段1 的数据
                 sendFileInfoStep.whenComplete(
                     r -> sendFiles(store, phase1Files.toArray(new StoreFileMetadata[0]), translogOps, sendFilesStep),
                     listener::onFailure
@@ -671,7 +671,7 @@ public class RecoverySourceHandler {
                         )
                     );
                 }, listener::onFailure);
-            } else {
+            } else { // 尝试跳过phase 1： synId 代表着什么
                 logger.trace("skipping [phase1] since source and target have identical sync id [{}]", recoverySourceMetadata.getSyncId());
 
                 // but we must still create a retention lease
@@ -755,7 +755,7 @@ public class RecoverySourceHandler {
                     + request.targetNode().getName()
                     + ")"
             );
-        }
+        } // 获取local checkpoint 和 max seq no; 并进行比较，发现不同，则不能跳过。
         SequenceNumbers.CommitInfo sourceSeqNos = SequenceNumbers.loadSeqNoInfoFromLuceneCommit(source.getCommitUserData().entrySet());
         SequenceNumbers.CommitInfo targetSeqNos = SequenceNumbers.loadSeqNoInfoFromLuceneCommit(target.getCommitUserData().entrySet());
         if (sourceSeqNos.localCheckpoint != targetSeqNos.localCheckpoint || targetSeqNos.maxSeqNo != sourceSeqNos.maxSeqNo) {
@@ -1062,7 +1062,7 @@ public class RecoverySourceHandler {
             onClose.close();
         }
     }
-
+    // primary 开始发送数据
     void sendFiles(Store store, StoreFileMetadata[] files, IntSupplier translogOps, ActionListener<Void> listener) {
         ArrayUtil.timSort(files, Comparator.comparingLong(StoreFileMetadata::length)); // send smallest first
 

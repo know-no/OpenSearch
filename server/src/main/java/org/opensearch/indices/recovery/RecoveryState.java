@@ -61,7 +61,7 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Keeps track of state related to shard recovery.
+ * Keeps track of state related to shard recovery. // 追踪了一个shard的恢复过程，五种recover都是用这个状态来追踪，只不过有的会短暂跳过某些状态
  */
 public class RecoveryState implements ToXContentFragment, Writeable {
 

@@ -176,9 +176,9 @@ public abstract class Engine implements Closeable {
     public final EngineConfig config() {
         return engineConfig;
     }
-
+    // 读取最后一次的提交信息
     protected abstract SegmentInfos getLastCommittedSegmentInfos();
-
+    // 查看合并状态
     public MergeStats getMergeStats() {
         return new MergeStats();
     }
@@ -1423,7 +1423,7 @@ public abstract class Engine implements Closeable {
             this.origin = origin;
             this.startTime = startTime;
         }
-
+        // 在引擎层的操作的来源，区别于Index的recover之类的，不在同一个层面
         public enum Origin {
             PRIMARY,
             REPLICA,
@@ -2084,8 +2084,8 @@ public abstract class Engine implements Closeable {
     public interface TranslogRecoveryRunner {
         int run(Engine engine, Translog.Snapshot snapshot) throws IOException;
     }
-
-    /**
+//返回最大的被此engine处理过的update或者delete操作的seqNo
+   /**
      * Returns the maximum sequence number of either update or delete operations have been processed in this engine
      * or the sequence number from {@link #advanceMaxSeqNoOfUpdatesOrDeletes(long)}. An index request is considered
      * as an update operation if it overwrites the existing documents in Lucene index with the same document id.

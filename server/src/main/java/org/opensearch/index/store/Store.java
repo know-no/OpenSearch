@@ -129,7 +129,7 @@ import static java.util.Collections.unmodifiableMap;
  * This class also provides access to metadata information like checksums for committed files. A committed
  * file is a file that belongs to a segment written by a Lucene commit. Files that have not been committed
  * ie. created during a merge or a shard refresh / NRT reopen are not considered in the MetadataSnapshot.
- * <p>
+ * <p> // 使用store的时候， refcount 需要增加
  * Note: If you use a store it's reference count should be increased before using it by calling #incRef and a
  * corresponding #decRef must be called in a try/finally block to release the store again ie.:
  * <pre>

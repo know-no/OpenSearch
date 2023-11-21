@@ -46,7 +46,7 @@ public class LocalCheckpointTracker {
     /**
      * We keep a bit for each sequence number that is still pending. To optimize allocation, we do so in multiple sets allocating them on
      * demand and cleaning up while completed. This constant controls the size of the sets.
-     */
+     *///对在pending的seqNo，保存它的一个bit？  这个bit会 对应一个 set
     static final short BIT_SET_SIZE = 1024;
 
     /**
@@ -58,18 +58,18 @@ public class LocalCheckpointTracker {
     /**
      * A collection of bit sets representing durably persisted sequence numbers. Each sequence number is mapped to a bit set by dividing by
      * the bit set size.
-     */
-    final LongObjectHashMap<CountedBitSet> persistedSeqNo = new LongObjectHashMap<>();
+     */ // 代表着被持久化的seqNo集合。 为什么用Map以及一个CountedBitSet来表示 // Map的key相当于切分区间，对应的value是一个CountedBitSet
+    final LongObjectHashMap<CountedBitSet> persistedSeqNo = new LongObjectHashMap<>();//每个set里面的每个元素代表着一个seqNum在这个区间里的余值
 
     /**
      * The current local checkpoint, i.e., all sequence numbers no more than this number have been processed.
-     */
+     */ //见 org.opensearch.index.engine.InternalEngine.index 1096行，只要写入translog就算是处理过了
     final AtomicLong processedCheckpoint = new AtomicLong();
 
     /**
      * The current persisted local checkpoint, i.e., all sequence numbers no more than this number have been durably persisted.
      */
-    final AtomicLong persistedCheckpoint = new AtomicLong();
+    final AtomicLong persistedCheckpoint = new AtomicLong(); // todo 什么时候算是 persisted了呢？是已经在吗
 
     /**
      * The next available sequence number.
@@ -128,7 +128,7 @@ public class LocalCheckpointTracker {
     /**
      * Marks the provided sequence number as persisted and updates the checkpoint if possible.
      *
-     * @param seqNo the sequence number to mark as persisted
+     * @param seqNo the sequence number to mark as persisted 尽力更新新的checkpoint
      */
     public synchronized void markSeqNoAsPersisted(final long seqNo) {
         markSeqNo(seqNo, persistedCheckpoint, persistedSeqNo);
@@ -143,11 +143,11 @@ public class LocalCheckpointTracker {
             return;
         }
         final CountedBitSet bitSet = getBitSetForSeqNo(bitSetMap, seqNo);
-        final int offset = seqNoToBitSetOffset(seqNo);
+        final int offset = seqNoToBitSetOffset(seqNo); // 设置此seqNo对应的那个bit位置 为true， 然后将从checkpoint开始拉下的都提升上来
         bitSet.set(offset);
         if (seqNo == checkPoint.get() + 1) {
-            updateCheckpoint(checkPoint, bitSetMap);
-        }
+            updateCheckpoint(checkPoint, bitSetMap);//很可能是被并发调用（是吗？对吗？），不过能够被调用到一回就够了，会做掉所有的工作？
+        }//看：commit 7f8e1454的注释
     }
 
     /**
@@ -236,10 +236,10 @@ public class LocalCheckpointTracker {
             // keep it simple for now, get the checkpoint one by one; in the future we can optimize and read words
             long bitSetKey = getBitSetKey(checkPoint.get());
             CountedBitSet current = bitSetMap.get(bitSetKey);
-            if (current == null) {
+            if (current == null) { //已经被清空了
                 // the bit set corresponding to the checkpoint has already been removed, set ourselves up for the next bit set
                 assert checkPoint.get() % BIT_SET_SIZE == BIT_SET_SIZE - 1;
-                current = bitSetMap.get(++bitSetKey);
+                current = bitSetMap.get(++bitSetKey); // 尝试处理下一个区间试试
             }
             do {
                 checkPoint.incrementAndGet();
@@ -247,16 +247,16 @@ public class LocalCheckpointTracker {
                  * The checkpoint always falls in the current bit set or we have already cleaned it; if it falls on the last bit of the
                  * current bit set, we can clean it.
                  */
-                if (checkPoint.get() == lastSeqNoInBitSet(bitSetKey)) {
+                if (checkPoint.get() == lastSeqNoInBitSet(bitSetKey)) { //如果是最后一个了，就可以清空以节约空间
                     assert current != null;
                     final CountedBitSet removed = bitSetMap.remove(bitSetKey);
                     assert removed == current;
                     current = bitSetMap.get(++bitSetKey);
                 }
-            } while (current != null && current.get(seqNoToBitSetOffset(checkPoint.get() + 1)));
-        } finally {
-            // notifies waiters in waitForProcessedOpsToComplete
-            this.notifyAll();
+            } while (current != null && current.get(seqNoToBitSetOffset(checkPoint.get() + 1)));//todo：但是为什么是循环，是因为
+        } finally {//todo：是因为想要一次调用，可能可以把其他需要update的也同样做了吗？因为checkpoint在变化，所以如果能够拿到 current.get(seqNoToBitSetOffset(checkPoint.get() + 1))
+            // notifies waiters in waitForProcessedOpsToComplete //todo：说明当下的checkpoint后面的一个值，也可以是true，即也被设置了，当然可以循环
+            this.notifyAll();// 用于test case模拟，不用于生产
         }
     }
 

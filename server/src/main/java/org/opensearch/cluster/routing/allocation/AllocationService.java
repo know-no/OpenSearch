@@ -215,9 +215,9 @@ public class AllocationService {
         assert assertInitialized();
         if (staleShards.isEmpty() && failedShards.isEmpty()) {
             return clusterState;
-        }
+        } // 构建出新的 临时state
         ClusterState tmpState = IndexMetadataUpdater.removeStaleIdsWithoutRoutings(clusterState, staleShards, logger);
-
+        // 从不可变数据结构，转为可变
         RoutingNodes routingNodes = getMutableRoutingNodes(tmpState);
         // shuffle the unassigned nodes, just so we won't have things like poison failed shards
         routingNodes.unassigned().shuffle();
@@ -230,11 +230,11 @@ public class AllocationService {
             snapshotsInfoService.snapshotShardSizes(),
             currentNanoTime
         );
-
+        // 遍历失败的 shard ，
         for (FailedShard failedShardEntry : failedShards) {
             ShardRouting shardToFail = failedShardEntry.getRoutingEntry();
             IndexMetadata indexMetadata = allocation.metadata().getIndexSafe(shardToFail.shardId().getIndex());
-            allocation.addIgnoreShardForNode(shardToFail.shardId(), shardToFail.currentNodeId());
+            allocation.addIgnoreShardForNode(shardToFail.shardId(), shardToFail.currentNodeId());//因为失败里，所以告诉allocatio要忽略这个节点，不要重复的把它分配上去
             // failing a primary also fails initializing replica shards, re-resolve ShardRouting
             ShardRouting failedShard = routingNodes.getByAllocationId(shardToFail.shardId(), shardToFail.allocationId().getId());
             if (failedShard != null) {
@@ -268,7 +268,7 @@ public class AllocationService {
                     failedNodeIds
                 );
                 if (failedShardEntry.markAsStale()) {
-                    allocation.removeAllocationId(failedShard);
+                    allocation.removeAllocationId(failedShard);//看详情，并没有执行动作，而是记录这个动作，而是在274行才执行
                 }
                 logger.warn(new ParameterizedMessage("failing shard [{}]", failedShardEntry), failedShardEntry.getFailure());
                 routingNodes.failShard(logger, failedShard, unassignedInfo, indexMetadata, allocation.changes());

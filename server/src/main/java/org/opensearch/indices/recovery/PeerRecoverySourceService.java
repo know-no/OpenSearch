@@ -131,7 +131,8 @@ public class PeerRecoverySourceService extends AbstractLifecycleComponent implem
     }
 
     @Override
-    protected void doClose() {}
+    protected void doClose() {
+    }
 
     @Override
     public void beforeIndexShardClosed(ShardId shardId, @Nullable IndexShard indexShard, Settings indexSettings) {
@@ -154,11 +155,11 @@ public class PeerRecoverySourceService extends AbstractLifecycleComponent implem
         final IndexShard shard = indexService.getShard(request.shardId().id());
 
         final ShardRouting routingEntry = shard.routingEntry();
-
+        // 可能这个primary被迁移走了之类的
         if (routingEntry.primary() == false || routingEntry.active() == false) {
             throw new DelayRecoveryException("source shard [" + routingEntry + "] is not an active primary");
         }
-
+        // 如果 来自的不是副本, 是新的primary
         if (request.isPrimaryRelocation()
             && (routingEntry.relocating() == false || routingEntry.relocatingNodeId().equals(request.targetNode().getId()) == false)) {
             logger.debug(
@@ -168,7 +169,7 @@ public class PeerRecoverySourceService extends AbstractLifecycleComponent implem
             );
             throw new DelayRecoveryException("source shard is not marked yet as relocating to [" + request.targetNode() + "]");
         }
-
+        // 可以理解是一个管理任务状态的列表， handler相当于其中的一个任务，并且内部会记录各种资源和状态，方便做清理：RecoverySourceHandler#recovertToTarget
         RecoverySourceHandler handler = ongoingRecoveries.addNewRecovery(request, shard);
         logger.trace(
             "[{}][{}] starting recovery to {}",
@@ -192,6 +193,7 @@ public class PeerRecoverySourceService extends AbstractLifecycleComponent implem
         ongoingRecoveries.reestablishRecovery(request, shard, listener);
     }
 
+    // 主shard接受到来自shard（不一定是副本，也可能是迁移的新的主shard）的恢复请求rpc，处理的逻辑
     class StartRecoveryTransportRequestHandler implements TransportRequestHandler<StartRecoveryRequest> {
         @Override
         public void messageReceived(final StartRecoveryRequest request, final TransportChannel channel, Task task) throws Exception {

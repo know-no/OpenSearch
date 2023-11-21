@@ -1912,16 +1912,16 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
         final Engine.TranslogRecoveryRunner translogRecoveryRunner = (engine, snapshot) -> {//Transport.snapshot,不是索引备份的snapshot
             translogRecoveryStats.totalOperations(snapshot.totalOperations());
             translogRecoveryStats.totalOperationsOnStart(snapshot.totalOperations());
-            return runTranslogRecovery(
+            return runTranslogRecovery( // 封装 translog的动作，待执行
                 engine,
                 snapshot,
-                Engine.Operation.Origin.LOCAL_TRANSLOG_RECOVERY,
+                Engine.Operation.Origin.LOCAL_TRANSLOG_RECOVERY, // 本地的translog恢复，不是远程的
                 translogRecoveryStats::incrementRecoveredOperations
             );
         };
         loadGlobalCheckpointToReplicationTracker();
         innerOpenEngineAndTranslog(replicationTracker);
-        getEngine().recoverFromTranslog(translogRecoveryRunner, Long.MAX_VALUE);
+        getEngine().recoverFromTranslog(translogRecoveryRunner, Long.MAX_VALUE); // 开始了translog 状态的恢复
     }
 
     /**
@@ -1956,7 +1956,7 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
             assert currentEngineReference.get() == null : "engine is running";
             verifyNotClosed();
             // we must create a new engine under mutex (see IndexShard#snapshotStoreMetadata).
-            final Engine newEngine = engineFactory.newReadWriteEngine(config);
+            final Engine newEngine = engineFactory.newReadWriteEngine(config); // 终于创建了engine
             onNewEngine(newEngine);
             currentEngineReference.set(newEngine);
             // We set active because we are now writing operations to the engine; this way,
@@ -2009,10 +2009,10 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
     public void resetRecoveryStage() {
         assert routingEntry().recoverySource().getType() == RecoverySource.Type.PEER : "not a peer recovery [" + routingEntry() + "]";
         assert currentEngineReference.get() == null;
-        if (state != IndexShardState.RECOVERING) {
+        if (state != IndexShardState.RECOVERING) { //此刻 target 的 shard一定是处于 recovering 状态
             throw new IndexShardNotRecoveringException(shardId, state);
         }
-        recoveryState().setStage(RecoveryState.Stage.INIT);
+        recoveryState().setStage(RecoveryState.Stage.INIT); // 而回到 recover 的状态， 则是 init
     }
 
     /**

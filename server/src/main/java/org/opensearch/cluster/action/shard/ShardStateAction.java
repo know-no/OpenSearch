@@ -413,7 +413,7 @@ public class ShardStateAction {
             );
         }
     }
-
+    // 当节点上报了 某个shard失败后，在master节点会执行的task
     public static class ShardFailedClusterStateTaskExecutor implements ClusterStateTaskExecutor<FailedShardEntry> {
         private final AllocationService allocationService;
         private final RerouteService rerouteService;
@@ -432,7 +432,7 @@ public class ShardStateAction {
             this.prioritySupplier = prioritySupplier;
         }
 
-        @Override
+        @Override // 被处理的地方
         public ClusterTasksResult<FailedShardEntry> execute(ClusterState currentState, List<FailedShardEntry> tasks) throws Exception {
             ClusterTasksResult.Builder<FailedShardEntry> batchResultBuilder = ClusterTasksResult.builder();
             List<FailedShardEntry> tasksToBeApplied = new ArrayList<>();
@@ -445,8 +445,8 @@ public class ShardStateAction {
                     // tasks that correspond to non-existent indices are marked as successful
                     logger.debug("{} ignoring shard failed task [{}] (unknown index {})", task.shardId, task, task.shardId.getIndex());
                     batchResultBuilder.success(task);
-                } else {
-                    // The primary term is 0 if the shard failed itself. It is > 0 if a write was done on a primary but was failed to be
+                } else {// todo： 结合下面的注释，和下面的代码详解，分析为什么 primaryTerm == 0 会特殊处理,fail self说明什么？是只有在安全的时候才会调用self fail吗？所以不用做各种集群层的数据处理
+                    // The primary term is 0 if the shard failed itself. It is > 0 if a write was done on a primary but was failed to be // todo 到底什么时候会 fail self
                     // replicated to the shard copy with the provided allocation id. In case where the shard failed itself, it's ok to just
                     // remove the corresponding routing entry from the routing table. In case where a write could not be replicated,
                     // however, it is important to ensure that the shard copy with the missing write is considered as stale from that point
@@ -454,16 +454,16 @@ public class ShardStateAction {
                     // We check here that the primary to which the write happened was not already failed in an earlier cluster state update.
                     // This prevents situations where a new primary has already been selected and replication failures from an old stale
                     // primary unnecessarily fail currently active shards.
-                    if (task.primaryTerm > 0) {
+                    if (task.primaryTerm > 0) { // 根据上面的注释，大于0说明 不是fail self，而是被其他节点上报的。对于 fail self的，可以直接删除 routing entry
                         long currentPrimaryTerm = indexMetadata.primaryTerm(task.shardId.id());
-                        if (currentPrimaryTerm != task.primaryTerm) {
+                        if (currentPrimaryTerm != task.primaryTerm) { //如果任务的term 不等于当下集群的此index的term，则后者一定大于后者。
                             assert currentPrimaryTerm > task.primaryTerm : "received a primary term with a higher term than in the "
-                                + "current cluster state (received ["
+                                + "current cluster state (received [" //
                                 + task.primaryTerm
                                 + "] but current is ["
                                 + currentPrimaryTerm
                                 + "])";
-                            logger.debug(
+                            logger.debug(//某某shardId failing shard， 任务是task， （primary term 和当下的不匹配）
                                 "{} failing shard failed task [{}] (primary term {} does not match current term {})",
                                 task.shardId,
                                 task,
@@ -472,7 +472,7 @@ public class ShardStateAction {
                             );
                             batchResultBuilder.failure(
                                 task,
-                                new NoLongerPrimaryShardException(
+                                new NoLongerPrimaryShardException( // 说明此被fail的是陈旧的。被其他节点发现，并且会报上来的
                                     task.shardId,
                                     "primary term ["
                                         + task.primaryTerm
@@ -483,24 +483,24 @@ public class ShardStateAction {
                             );
                             continue;
                         }
-                    }
-
+                    }// 两种情况走到这里：1. task.primaryTerm == 0  2. task.primaryTerm > 0，并且currentPrimaryTerm==task.primaryTerm
+                     // 说明，被上报的shard是活跃着的，甚至是在 clusterstate里， 尝试从state里找到这个shard具体的分片和对应的allocationId
                     ShardRouting matched = currentState.getRoutingTable().getByAllocationId(task.shardId, task.allocationId);
-                    if (matched == null) {
+                    if (matched == null) { // 没找到； 即在当前的集群状态里没有这个shard的allocation。  但是 可能在 indexMetadata里
                         Set<String> inSyncAllocationIds = indexMetadata.inSyncAllocationIds(task.shardId.id());
                         // mark shard copies without routing entries that are in in-sync allocations set only as stale if the reason why
                         // they were failed is because a write made it into the primary but not to this copy (which corresponds to
-                        // the check "primaryTerm > 0").
+                        // the check "primaryTerm > 0"). // 如果是被其他节点上报为fail的， 并且包含在最新数据子集里，则将其去除，即marking as stale
                         if (task.primaryTerm > 0 && inSyncAllocationIds.contains(task.allocationId)) {
                             logger.debug("{} marking shard {} as stale (shard failed task: [{}])", task.shardId, task.allocationId, task);
                             tasksToBeApplied.add(task);
                             staleShardsToBeApplied.add(new StaleShard(task.shardId, task.allocationId));
-                        } else {
+                        } else { // primaryTerm == 0， 或者， 虽然primaryTerm > 0, 但是不在最新列表里 ； 直接将此任务列为success。
                             // tasks that correspond to non-existent shards are marked as successful
                             logger.debug("{} ignoring shard failed task [{}] (shard does not exist anymore)", task.shardId, task);
                             batchResultBuilder.success(task);
                         }
-                    } else {
+                    } else { // 找到了； 即此shard的此allocation存在于集群状态里？ 需要做失败处理？ todo 为什么此处不检查indexMata里的，是因为failedShardsToBeApplied会处理吗
                         // failing a shard also possibly marks it as stale (see IndexMetadataUpdater)
                         logger.debug("{} failing shard {} (shard failed task: [{}])", task.shardId, matched, task);
                         tasksToBeApplied.add(task);
@@ -511,7 +511,7 @@ public class ShardStateAction {
             assert tasksToBeApplied.size() == failedShardsToBeApplied.size() + staleShardsToBeApplied.size();
 
             ClusterState maybeUpdatedState = currentState;
-            try {
+            try { // 开始处理： 把陈旧的， 失败的，都拿过来
                 maybeUpdatedState = applyFailedShards(currentState, failedShardsToBeApplied, staleShardsToBeApplied);
                 batchResultBuilder.successes(tasksToBeApplied);
             } catch (Exception e) {
@@ -523,7 +523,7 @@ public class ShardStateAction {
 
             return batchResultBuilder.build(maybeUpdatedState);
         }
-
+        // 处理失败的，过期的
         // visible for testing
         ClusterState applyFailedShards(ClusterState currentState, List<FailedShard> failedShards, List<StaleShard> staleShards) {
             return allocationService.applyFailedShards(currentState, failedShards, staleShards);

@@ -67,7 +67,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.LongConsumer;
 import java.util.function.LongSupplier;
-
+// 根据commit：7f8e1454的info 会追踪seqNo not been fsynced.Once they are fsynced, TranslogWriter notifies LocalCheckpointTracker of this.
 public class TranslogWriter extends BaseTranslogReader implements Closeable {
 
     private final ShardId shardId; // 有shardId，说明是shard级别的
