@@ -106,7 +106,7 @@ import static org.opensearch.indices.cluster.IndicesClusterStateService.Allocate
 import static org.opensearch.indices.cluster.IndicesClusterStateService.AllocatedIndices.IndexRemovalReason.FAILURE;
 import static org.opensearch.indices.cluster.IndicesClusterStateService.AllocatedIndices.IndexRemovalReason.NO_LONGER_ASSIGNED;
 import static org.opensearch.indices.cluster.IndicesClusterStateService.AllocatedIndices.IndexRemovalReason.REOPENED;
-
+// 与索引有关的， 相应的对 cluste state 做相应的处理几乎都在这类, 见applyClusterState，来自于接口：ClusterStateApplier
 public class IndicesClusterStateService extends AbstractLifecycleComponent implements ClusterStateApplier {
     private static final Logger logger = LogManager.getLogger(IndicesClusterStateService.class);
 
@@ -245,15 +245,15 @@ public class IndicesClusterStateService extends AbstractLifecycleComponent imple
             }
             return;
         }
-
+//从失败分区缓存中删除主节点不再分配给此节点的分区条目。为标记为已“主动分配给此节点且活跃”但实际上不存在于节点上的分区发送分区失败。为仍标记为已分配给此节点但之前已失败的分区重新发送分区失败。
         updateFailedShardsCache(state);
-
+// 删除索引以及 shard ，但也只是保留了部分的持久化数据，类似translog，这样可以在disaster的时候恢复
         deleteIndices(event); // also deletes shards of deleted indices
-
+// 虽然是删除shards，但是因为😑被分配在此节点了，不会实际删除数据，并且还会等到集群中有了足够多的副本才会执行
         removeIndices(event); // also removes shards of removed indices
-
+// 向master回报本该active在此节点，实际却不在的shards
         failMissingShards(state);
-
+// 删除那些shards，不符合master要求的
         removeShards(state);   // removes any local shards that doesn't match what the master expects
 
         updateIndices(event); // can also fail shards, but these are then guaranteed to be in failedShardsCache
@@ -565,7 +565,7 @@ public class IndicesClusterStateService extends AbstractLifecycleComponent imple
                             )
                         );
                     }
-                } catch (Exception e) {
+                } catch (Exception e) { //一旦更新就删除index，并且发送fail shard通知
                     indicesService.removeIndex(indexService.index(), FAILURE, "removing index (" + reason + ")");
 
                     // fail shards that would be created or updated by createOrUpdateShards

@@ -67,7 +67,7 @@ import static org.opensearch.cluster.metadata.MetadataIndexStateService.isIndexV
  * version of the current routing state.
  *
  * @see IndexRoutingTable
- */
+ */ // 最好的解释文章在： https://cloud.tencent.com/developer/article/2168895
 public class RoutingTable implements Iterable<IndexRoutingTable>, Diffable<RoutingTable> {
 
     public static final RoutingTable EMPTY_ROUTING_TABLE = builder().build();

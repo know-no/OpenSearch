@@ -82,7 +82,7 @@ import java.util.stream.StreamSupport;
 //追踪整个replication组,记录他们的被安全持久化 的数据的位置.根据commit：7f8e1454的info 会追踪the persisted local and persisted global checkpoints of all shard copies when in primary mode.
 /**
  * This class is responsible for tracking the replication group with its progress and safety markers (local and global checkpoints).
- *
+ * // active的分片，一定是拥有全局提交了的数据的。所以恢复的时候，选择主分片就是直接从 active 里面选择一个
  * The global checkpoint is the highest sequence number for which all lower (or equal) sequence number have been processed
  * on all shards that are currently active. Since shards count as "active" when the master starts
  * them, and before this primary shard has been notified of this fact, we also include shards that have completed recovery. These shards

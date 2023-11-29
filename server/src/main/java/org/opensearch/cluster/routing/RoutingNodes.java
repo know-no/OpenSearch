@@ -370,7 +370,7 @@ public class RoutingNodes implements Iterable<RoutingNode> {
      * Since replicas could possibly be on nodes with a older version of OpenSearch than
      * the primary is, this will return replicas on the highest version of OpenSearch.
      *
-     */
+     */ // 副本提升过程的一步， 找到此shardId对应的副本集合里，拥有最大版本号的活跃副本（节点的二进制部署文件版本号）
     public ShardRouting activeReplicaWithHighestVersion(ShardId shardId) {
         // It's possible for replicaNodeVersion to be null, when disassociating dead nodes
         // that have been removed, the shards are failed, and part of the shard failing
@@ -580,7 +580,7 @@ public class RoutingNodes implements Iterable<RoutingNode> {
      * Applies the relevant logic to handle a cancelled or failed shard.
      *
      * Moves the shard to unassigned or completely removes the shard (if relocation target).
-     *
+     * //关于第二个if
      * - If shard is a primary, this also fails initializing replicas.
      * - If shard is an active primary, this also promotes an active replica to primary (if such a replica exists).
      * - If shard is a relocating primary, this also removes the primary relocation target shard.
@@ -684,7 +684,7 @@ public class RoutingNodes implements Iterable<RoutingNode> {
         } else {
             assert failedShard.active();
             if (failedShard.primary()) {
-                // promote active replica to primary if active replica exists
+                // promote active replica to primary if active replica exists // 改变活跃的副本的状态为主
                 unassignPrimaryAndPromoteActiveReplicaIfExists(failedShard, unassignedInfo, routingChangesObserver);
             } else {
                 if (failedShard.relocating()) {
@@ -709,7 +709,7 @@ public class RoutingNodes implements Iterable<RoutingNode> {
         ShardRouting activeReplica = activeReplicaWithHighestVersion(failedShard.shardId());
         if (activeReplica == null) {
             moveToUnassigned(failedShard, unassignedInfo);
-        } else {
+        } else { // 提升
             movePrimaryToUnassignedAndDemoteToReplica(failedShard, unassignedInfo);
             promoteReplicaToPrimary(activeReplica, routingChangesObserver);
         }
@@ -764,7 +764,7 @@ public class RoutingNodes implements Iterable<RoutingNode> {
     private ShardRouting promoteActiveReplicaShardToPrimary(ShardRouting replicaShard) {
         assert replicaShard.active() : "non-active shard cannot be promoted to primary: " + replicaShard;
         assert replicaShard.primary() == false : "primary shard cannot be promoted to primary: " + replicaShard;
-        ShardRouting primaryShard = replicaShard.moveActiveReplicaToPrimary();
+        ShardRouting primaryShard = replicaShard.moveActiveReplicaToPrimary(); // 只是改变状态哦
         updateAssigned(replicaShard, primaryShard);
         return primaryShard;
     }
@@ -874,7 +874,7 @@ public class RoutingNodes implements Iterable<RoutingNode> {
     /**
      * Moves assigned primary to unassigned and demotes it to a replica.
      * Used in conjunction with {@link #promoteActiveReplicaShardToPrimary} when an active replica is promoted to primary.
-     */
+     */ // 取消此failed shard的 relocating 状态，如果有的话。 并且把它标记为 unassign FromPrimary
     private ShardRouting movePrimaryToUnassignedAndDemoteToReplica(ShardRouting shard, UnassignedInfo unassignedInfo) {
         assert shard.unassigned() == false : "only assigned shards can be moved to unassigned (" + shard + ")";
         assert shard.primary() : "only primary can be demoted to replica (" + shard + ")";

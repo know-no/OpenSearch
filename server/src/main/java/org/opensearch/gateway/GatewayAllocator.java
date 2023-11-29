@@ -71,7 +71,7 @@ public class GatewayAllocator implements ExistingShardsAllocator {
 
     private final RerouteService rerouteService;
 
-    private final PrimaryShardAllocator primaryShardAllocator;
+    private final PrimaryShardAllocator primaryShardAllocator;//
     private final ReplicaShardAllocator replicaShardAllocator;
 
     private final ConcurrentMap<

@@ -432,7 +432,7 @@ public class ShardStateAction {
             this.prioritySupplier = prioritySupplier;
         }
 
-        @Override // 被处理的地方
+        @Override // 被处理的地方， 返回一个可能的集群状态
         public ClusterTasksResult<FailedShardEntry> execute(ClusterState currentState, List<FailedShardEntry> tasks) throws Exception {
             ClusterTasksResult.Builder<FailedShardEntry> batchResultBuilder = ClusterTasksResult.builder();
             List<FailedShardEntry> tasksToBeApplied = new ArrayList<>();

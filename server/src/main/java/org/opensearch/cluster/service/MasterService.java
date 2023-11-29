@@ -244,7 +244,7 @@ public class MasterService extends AbstractLifecycleComponent {
             taskInputs.onNoLongerMaster();
             return;
         }
-
+        // 接下来执行 任务， 如果集群状态需要修改， 那么就 publish 让其他节点都接受到这个变化
         final long computationStartTime = threadPool.relativeTimeInMillis();
         final TaskOutputs taskOutputs = calculateTaskOutputs(taskInputs, previousClusterState);
         taskOutputs.notifyFailedTasks();

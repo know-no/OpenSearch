@@ -507,7 +507,7 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
                         + newRouting
                 );
             }
-
+            // 如果新的routing 是primary， 虽然不知道旧的是不是
             if (newRouting.primary()) {
                 replicationTracker.updateFromMaster(applyingClusterStateVersion, inSyncAllocationIds, routingTable);
             }

@@ -47,15 +47,15 @@ import org.opensearch.indices.cluster.IndicesClusterStateService.AllocatedIndice
  * <p>
  * An IndexEventListener can be used across multiple indices and shards since all callback methods receive sufficient
  * local state via their arguments. Yet, if an instance is shared across indices they might be called concurrently and should not
- * modify local state without sufficient synchronization.
+ * modify local state without sufficient synchronization. // 可以被跨索引使用，所以要注意并发
  * </p>
  */
 public interface IndexEventListener {
 
-    /**
-     * Called when the shard routing has changed state.
-     *
-     * @param indexShard The index shard
+    /** // shard routing变化的时候被调用； todo： 问题来了，什么时候会变化呢？ shard变化，迁移，promote也算吗？
+     * Called when the shard routing has changed state. 即构造了新的 ShardRouting，且分配到了这个节点上
+     * // 在IndexShard#updateShardState(ShardRouting, long, BiConsumer, long, Set, IndexShardRoutingTable) 时候被调用
+     * @param indexShard The index shard    // 即master发布了新的cluster， 在IndicesClusterStateService应用更新索引
      * @param oldRouting The old routing state (can be null)
      * @param newRouting The new routing state
      */

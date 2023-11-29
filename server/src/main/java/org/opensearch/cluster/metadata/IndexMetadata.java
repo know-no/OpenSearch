@@ -475,7 +475,7 @@ public class IndexMetadata implements Diffable<IndexMetadata>, ToXContentFragmen
 
     private final ImmutableOpenMap<String, DiffableStringMap> customData;
 
-    private final ImmutableOpenIntMap<Set<String>> inSyncAllocationIds;//(in-sync allocation IDs)包含最新数据副本的子集
+    private final ImmutableOpenIntMap<Set<String>> inSyncAllocationIds;//(in-sync allocation IDs)包含最新数据副本的子集。 但是不包含主？
 
     private final transient int totalNumberOfShards;
 

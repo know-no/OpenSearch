@@ -879,7 +879,7 @@ public class IndicesService extends AbstractLifecycleComponent
                 indexService = newIndices.remove(index.getUUID());
                 assert indexService != null : "IndexService is null for index: " + index;
                 indices = unmodifiableMap(newIndices);
-                listener = indexService.getIndexEventListener();
+                listener = indexService.getIndexEventListener();//当index被删除的时候，要触发它的listener，并且针对动作触发对应的行为
             }
 
             listener.beforeIndexRemoved(indexService, reason);

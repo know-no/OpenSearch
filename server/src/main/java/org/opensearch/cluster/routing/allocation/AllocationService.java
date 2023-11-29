@@ -217,7 +217,7 @@ public class AllocationService {
             return clusterState;
         } // 构建出新的 临时state
         ClusterState tmpState = IndexMetadataUpdater.removeStaleIdsWithoutRoutings(clusterState, staleShards, logger);
-        // 从不可变数据结构，转为可变
+        // 从不可变数据结构，生成一个的可变，方便计算
         RoutingNodes routingNodes = getMutableRoutingNodes(tmpState);
         // shuffle the unassigned nodes, just so we won't have things like poison failed shards
         routingNodes.unassigned().shuffle();
@@ -277,15 +277,15 @@ public class AllocationService {
             }
         }
         for (final ExistingShardsAllocator allocator : existingShardsAllocators.values()) {
-            allocator.applyFailedShards(failedShards, allocation);
+            allocator.applyFailedShards(failedShards, allocation);//对每个此index设定的allocator，计算对应的约束，放到allocation里
         }
-
+        //根据计算后的allocation，重新route allocation，生成最后的allocation,以便后续构建出来的clusterState符合各种约束
         reroute(allocation);
         String failedShardsAsString = firstListElementsToCommaDelimitedString(
             failedShards,
             s -> s.getRoutingEntry().shardId().toString(),
             logger.isDebugEnabled()
-        );
+        ); // 产出新的 clusterState， 然后等待让各个节点进行apply？ todo：话说，在各个节点apply的过程中，比如shard原本在a，正在被迁移到b，或者刚迁移完，查询和写入是如何度过这个过渡期的
         return buildResultAndLogHealthChange(clusterState, allocation, "shards failed [" + failedShardsAsString + "]");
     }
 
