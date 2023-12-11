@@ -83,7 +83,7 @@ public class LocalCheckpointTracker {
      *
      * @param maxSeqNo        the last sequence number assigned, or {@link SequenceNumbers#NO_OPS_PERFORMED}
      * @param localCheckpoint the last known local checkpoint, or {@link SequenceNumbers#NO_OPS_PERFORMED}
-     */
+     *///已有index的也是从segmentInfo里读取到的
     public LocalCheckpointTracker(final long maxSeqNo, final long localCheckpoint) {
         if (localCheckpoint < 0 && localCheckpoint != SequenceNumbers.NO_OPS_PERFORMED) {
             throw new IllegalArgumentException(
@@ -119,7 +119,7 @@ public class LocalCheckpointTracker {
     /**
      * Marks the provided sequence number as processed and updates the processed checkpoint if possible.
      *
-     * @param seqNo the sequence number to mark as processed
+     * @param seqNo the sequence number to mark as processed 在#43205，由TranslogWriter将此SeqNo的operation持久化到磁盘后，通知到LocalCheckpointTracker来调用此更新方法
      */
     public synchronized void markSeqNoAsProcessed(final long seqNo) {
         markSeqNo(seqNo, processedCheckpoint, processedSeqNo);
@@ -128,7 +128,7 @@ public class LocalCheckpointTracker {
     /**
      * Marks the provided sequence number as persisted and updates the checkpoint if possible.
      *
-     * @param seqNo the sequence number to mark as persisted 尽力更新新的checkpoint
+     * @param seqNo the sequence number to mark as persisted 在
      */
     public synchronized void markSeqNoAsPersisted(final long seqNo) {
         markSeqNo(seqNo, persistedCheckpoint, persistedSeqNo);

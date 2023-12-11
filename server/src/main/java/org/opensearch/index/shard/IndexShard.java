@@ -685,7 +685,7 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
      */
     public IndexShardState markAsRecovering(String reason, RecoveryState recoveryState) throws IndexShardStartedException,
         IndexShardRelocatedException, IndexShardRecoveringException, IndexShardClosedException {
-        synchronized (mutex) {
+        synchronized (mutex) { // 所以shard 只能是 CREATED 的状态,即不能对：关闭，开启，正在恢复，恢复后的 shard进行恢复
             if (state == IndexShardState.CLOSED) {
                 throw new IndexShardClosedException(shardId);
             }
@@ -698,7 +698,7 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
             if (state == IndexShardState.POST_RECOVERY) {
                 throw new IndexShardRecoveringException(shardId);
             }
-            this.recoveryState = recoveryState;
+            this.recoveryState = recoveryState; // 更新shard的 recover 进度
             return changeState(IndexShardState.RECOVERING, reason);
         }
     }
@@ -1890,7 +1890,7 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
         }
         return opsRecovered;
     }
-
+    //将segmentInfo里的，额外信息UUID获取，然后到Translog的ckp文件里,读到globalCheckpoint
     private void loadGlobalCheckpointToReplicationTracker() throws IOException {
         // we have to set it before we open an engine and recover from the translog because
         // acquiring a snapshot from the translog causes a sync which causes the global checkpoint to be pulled in,
@@ -1919,8 +1919,8 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
                 translogRecoveryStats::incrementRecoveredOperations
             );
         };
-        loadGlobalCheckpointToReplicationTracker();
-        innerOpenEngineAndTranslog(replicationTracker);
+        loadGlobalCheckpointToReplicationTracker();//从translog里//maxSeqNo，persistedCheckpoint是从lucene segmentInfo
+        innerOpenEngineAndTranslog(replicationTracker);// 内存里的globalCheckpoint
         getEngine().recoverFromTranslog(translogRecoveryRunner, Long.MAX_VALUE); // 开始了translog 状态的恢复
     }
 
@@ -2207,7 +2207,7 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
             }
         }
     }
-
+    // 调用此方法的必须是一个：正在 initializing 的 primary shard
     public void recoverFromStore(ActionListener<Boolean> listener) {
         // we are the first primary, recover from the gateway
         // if its post api allocation, the index should exists
@@ -3054,7 +3054,7 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
         RecoveryState recoveryState,
         PeerRecoveryTargetService.RecoveryListener recoveryListener,
         CheckedConsumer<ActionListener<Boolean>, Exception> action
-    ) {
+    ) { // 返回新的 shard 状态， 即 处于恢复中： recovering
         markAsRecovering(reason, recoveryState); // mark the shard as recovering on the cluster state thread // 等于是在通知和修改集群状态
         threadPool.generic().execute(ActionRunnable.wrap(ActionListener.wrap(r -> {
             if (r) {

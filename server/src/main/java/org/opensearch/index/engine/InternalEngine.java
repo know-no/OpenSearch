@@ -254,7 +254,7 @@ public class InternalEngine extends Engine {
             try {
                 trimUnsafeCommits(engineConfig);
                 translog = openTranslog(engineConfig, translogDeletionPolicy, engineConfig.getGlobalCheckpointSupplier(), seqNo -> {
-                    final LocalCheckpointTracker tracker = getLocalCheckpointTracker();
+                    final LocalCheckpointTracker tracker = getLocalCheckpointTracker();// InternalEngine的LocalCheckpoint
                     assert tracker != null || getTranslog().isOpen() == false;
                     if (tracker != null) {
                         tracker.markSeqNoAsPersisted(seqNo);
@@ -561,7 +561,7 @@ public class InternalEngine extends Engine {
         EngineConfig engineConfig,
         TranslogDeletionPolicy translogDeletionPolicy,
         LongSupplier globalCheckpointSupplier,
-        LongConsumer persistedSequenceNumberConsumer
+        LongConsumer persistedSequenceNumberConsumer // LocalCheckpoint markSeqNoAsPersisted
     ) throws IOException {
 
         final TranslogConfig translogConfig = engineConfig.getTranslogConfig();

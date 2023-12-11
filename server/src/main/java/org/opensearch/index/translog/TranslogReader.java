@@ -90,12 +90,12 @@ public class TranslogReader extends BaseTranslogReader implements Closeable {
 
     /**
      * Closes current reader and creates new one with new checkoint and same file channel
-     */
+     */// #10708  #30176
     TranslogReader closeIntoTrimmedReader(long aboveSeqNo, ChannelFactory channelFactory) throws IOException {
         if (closed.compareAndSet(false, true)) {
             Closeable toCloseOnFailure = channel;
             final TranslogReader newReader;
-            try {
+            try {//todo:两种情况代表什么？1.代表虽然已经被处理过,但是重新处理吗 2. 没处理过，且此checkpoint存在可能需要trim的操作，即max>aboveSeqNo
                 if (aboveSeqNo < checkpoint.trimmedAboveSeqNo
                     || aboveSeqNo < checkpoint.maxSeqNo && checkpoint.trimmedAboveSeqNo == SequenceNumbers.UNASSIGNED_SEQ_NO) {
                     final Path checkpointFile = path.getParent().resolve(getCommitCheckpointFileName(checkpoint.generation));
@@ -110,7 +110,7 @@ public class TranslogReader extends BaseTranslogReader implements Closeable {
                         aboveSeqNo
                     );
                     Checkpoint.write(channelFactory, checkpointFile, newCheckpoint, StandardOpenOption.WRITE);
-
+                    //上一步不是已经force了吗，怎么又来一次？第二次加了forceMeta
                     IOUtils.fsync(checkpointFile, false);
                     IOUtils.fsync(checkpointFile.getParent(), true);
 

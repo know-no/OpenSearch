@@ -47,8 +47,8 @@ import java.nio.file.Path;
 public abstract class BaseTranslogReader implements Comparable<BaseTranslogReader> {
 
     protected final long generation;
-    protected final FileChannel channel;
-    protected final Path path;
+    protected final FileChannel channel; // tlog文件的channel
+    protected final Path path; // tlog文件的path
     protected final TranslogHeader header;
 
     public BaseTranslogReader(long generation, FileChannel channel, Path path, TranslogHeader header) {

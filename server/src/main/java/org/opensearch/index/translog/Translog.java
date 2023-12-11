@@ -124,7 +124,7 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
     public static final String TRANSLOG_FILE_PREFIX = "translog-";
     public static final String TRANSLOG_FILE_SUFFIX = ".tlog"; // translog文件的后缀， 见org.opensearch.index.translog.Translog.getFilename
     public static final String CHECKPOINT_SUFFIX = ".ckp"; // 见 getCommitCheckpointFileName ，translog-N.ckp是已提交的,区别于未提交的 tranlog.ckp
-    public static final String CHECKPOINT_FILE_NAME = "translog" + CHECKPOINT_SUFFIX; // 保存checkpoint的文件， tranlog.ckp
+    public static final String CHECKPOINT_FILE_NAME = "translog" + CHECKPOINT_SUFFIX; // 保存checkpoint的文件， translog.ckp, 是最新的 translog-i.ckp
 
     static final Pattern PARSE_STRICT_ID_PATTERN = Pattern.compile("^" + TRANSLOG_FILE_PREFIX + "(\\d+)(\\.tlog)$");
     public static final int DEFAULT_HEADER_SIZE_IN_BYTES = TranslogHeader.headerSizeInBytes(UUIDs.randomBase64UUID());
@@ -133,7 +133,7 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
     private final List<TranslogReader> readers = new ArrayList<>();
     private final BigArrays bigArrays;
     protected final ReleasableLock readLock;
-    protected final ReleasableLock writeLock;
+    protected final ReleasableLock writeLock;// writeLock貌似貌似是控制generation的更迭
     private final Path location;
     private TranslogWriter current; // 真正的translog写入
 
@@ -218,7 +218,7 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
             try {
                 current = createWriter(
                     checkpoint.generation + 1,
-                    getMinFileGeneration(),
+                    getMinFileGeneration(), // 返回最低的引用文件的序号
                     checkpoint.globalCheckpoint,
                     persistedSequenceNumberConsumer
                 );
@@ -275,14 +275,14 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
                     + ", existing term ["
                     + reader.getPrimaryTerm()
                     + "]";
-                foundTranslogs.add(reader);
+                foundTranslogs.add(reader); // 最新的提交在队列头，马上被reverse
                 logger.debug("recovered local translog from checkpoint {}", checkpoint);
             }
-            Collections.reverse(foundTranslogs);
+            Collections.reverse(foundTranslogs); // reverse, 队列头是旧的commit文件
 
             // when we clean up files, we first update the checkpoint with a new minReferencedTranslog and then delete them;
             // if we crash just at the wrong moment, it may be that we leave one unreferenced file behind so we delete it if there
-            IOUtils.deleteFilesIgnoringExceptions(
+            IOUtils.deleteFilesIgnoringExceptions( // 删除 minGenerationToRecoverFrom 以下的文件，因为我们不用从低于这个序号的文件恢复了
                 location.resolve(getFilename(minGenerationToRecoverFrom - 1)),
                 location.resolve(getCommitCheckpointFileName(minGenerationToRecoverFrom - 1))
             );
@@ -302,7 +302,7 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
                     );
                 }
             } else {
-                copyCheckpointTo(commitCheckpoint);
+                copyCheckpointTo(commitCheckpoint); // 如果本该存在的文件不存在，那我们复制进去
             }
             success = true;
         } finally {
@@ -312,7 +312,7 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
         }
         return foundTranslogs;
     }
-
+    //roll之后，将 translog.ckp -> translog-i.ckp
     private void copyCheckpointTo(Path targetPath) throws IOException {
         // a temp file to copy checkpoint to - note it must be in on the same FS otherwise atomic move won't work
         final Path tempFile = Files.createTempFile(location, TRANSLOG_FILE_PREFIX, CHECKPOINT_SUFFIX);
@@ -402,7 +402,7 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
         if (closed.compareAndSet(false, true)) {
             try (ReleasableLock lock = writeLock.acquire()) {
                 try {
-                    current.sync();
+                    current.sync(); // 关闭的时候，一定要强制当前的TranslogWriter落盘自己的数据
                 } finally {
                     closeFilesIfNoPendingRetentionLocks();
                 }
@@ -431,7 +431,7 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
     }
 
     /**
-     * Returns the minimum file generation referenced by the translog
+     * Returns the minimum file generation referenced by the translog // 如果不引用着reader，则就用writer的。有的话，用reader里的最小的
      */
     public long getMinFileGeneration() {
         try (ReleasableLock ignored = readLock.acquire()) {
@@ -525,9 +525,9 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
     TranslogWriter createWriter(long fileGeneration) throws IOException {
         final TranslogWriter writer = createWriter(
             fileGeneration,
-            getMinFileGeneration(),
-            globalCheckpointSupplier.getAsLong(),
-            persistedSequenceNumberConsumer
+            getMinFileGeneration(), // 为什么还要引用它 ？ 目前感觉只是记录下，这个writer在commit的时候，还有的最小
+            globalCheckpointSupplier.getAsLong(), // checkpoint被记录，用来得知：此writer创建的时候，所有的小于此值的，都被其他节点给processed过了
+            persistedSequenceNumberConsumer// engine里的localcheckpoint被processed，在这里被TranslogWriter负责推进到 persisted
         );
         assert writer.sizeInBytes() == DEFAULT_HEADER_SIZE_IN_BYTES : "Mismatch translog header size; "
             + "empty translog size ["
@@ -559,13 +559,13 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
                 shardId,
                 translogUUID,
                 fileGeneration,
-                location.resolve(getFilename(fileGeneration)),
-                getChannelFactory(),
+                location.resolve(getFilename(fileGeneration)),// 新的tlog文件
+                getChannelFactory(),// 文件系统的抽
                 config.getBufferSize(),
-                initialMinTranslogGen,
-                initialGlobalCheckpoint,
-                globalCheckpointSupplier,
-                this::getMinFileGeneration,
+                initialMinTranslogGen, // 记录的最小。用处看来不大
+                initialGlobalCheckpoint, // 当这个writer创建的时候，记录下它的globalCheckpointWriter
+                globalCheckpointSupplier, // 获取globalCheckpoint的更新。在运行时写入是通过 IndexShard的handlePrimaryResult或者performOnReplicas
+                this::getMinFileGeneration, // 时刻可以获得Translog的最新的最小的文件引用
                 primaryTermSupplier.getAsLong(),
                 tragedy,
                 persistedSequenceNumberConsumer,
@@ -585,8 +585,8 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
      * @throws IOException if adding the operation to the translog resulted in an I/O exception
      */ // 添加translog， 并且记录位置
     public Location add(final Operation operation) throws IOException {
-        final ReleasableBytesStreamOutput out = new ReleasableBytesStreamOutput(bigArrays);
-        try {
+        final ReleasableBytesStreamOutput out = new ReleasableBytesStreamOutput(bigArrays); // 先add到中间缓存 // 还是jvm内存，并且是Translog的缓存，还没到TranslogWriter的
+        try { // 接下来几行的写入是：先空出一个int（因为operation要写入多少还不知道），写入operation，获取写前写后的offset，差值就是size，将size写到之前空出来的空间里
             final long start = out.position();
             out.skip(Integer.BYTES);
             writeOperationNoSize(new BufferedChecksumStreamOutput(out), operation);
@@ -595,7 +595,7 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
             out.seek(start);
             out.writeInt(operationSize);
             out.seek(end);
-            final BytesReference bytes = out.bytes();
+            final BytesReference bytes = out.bytes(); // 获取此写入缓存的bytes  // 为什么是读锁
             try (ReleasableLock ignored = readLock.acquire()) {
                 ensureOpen();
                 if (operation.primaryTerm() > current.getPrimaryTerm()) {
@@ -614,7 +614,7 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
                             + "]"
                     );
                 } // SeqNo是操作的序列号，用于es的并发控制
-                return current.add(bytes, operation.seqNo());
+                return current.add(bytes, operation.seqNo()); //添加到TranslogWriter
             }
         } catch (final AlreadyClosedException | IOException ex) {
             closeOnTragicEvent(ex);
@@ -659,7 +659,7 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
     /**
      * The last synced checkpoint for this translog.
      *
-     * @return the last synced checkpoint
+     * @return the last synced checkpoint // 最新的被持久化了的Translog的checkpoint的globalCheckpoint； 这个Checkpoint是Translog
      */
     public long getLastSyncedGlobalCheckpoint() {
         return getLastSyncedCheckpoint().globalCheckpoint;
@@ -682,7 +682,7 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
 
     /**
      * Creates a new translog snapshot containing operations from the given range.
-     *
+     * todo 看不懂
      * @param fromSeqNo the lower bound of the range (inclusive)
      * @param toSeqNo   the upper bound of the range (inclusive)
      * @return the new snapshot
@@ -691,7 +691,7 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
         assert fromSeqNo <= toSeqNo : fromSeqNo + " > " + toSeqNo;
         assert fromSeqNo >= 0 : "from_seq_no must be non-negative " + fromSeqNo;
         try (ReleasableLock ignored = readLock.acquire()) {
-            ensureOpen();
+            ensureOpen(); // 即reader包含了 fromSeq和toSeq
             TranslogSnapshot[] snapshots = Stream.concat(readers.stream(), Stream.of(current))
                 .filter(reader -> reader.getCheckpoint().minSeqNo <= toSeqNo && fromSeqNo <= reader.getCheckpoint().maxEffectiveSeqNo())
                 .map(BaseTranslogReader::newSnapshot)
@@ -730,7 +730,7 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
         }
         return null;
     }
-
+    // todo
     private Snapshot newMultiSnapshot(TranslogSnapshot[] snapshots) throws IOException {
         final Closeable onClose;
         if (snapshots.length == 0) {
@@ -751,7 +751,7 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
             }
         }
     }
-
+    // 但是above min ，为什么不考虑 reader的min; 看起来，只要reader的max比min大就好
     private Stream<? extends BaseTranslogReader> readersAboveMinSeqNo(long minSeqNo) {
         assert readLock.isHeldByCurrentThread() || writeLock.isHeldByCurrentThread()
             : "callers of readersAboveMinSeqNo must hold a lock: readLock ["
@@ -778,7 +778,7 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
         return () -> {
             try {
                 toClose.close();
-            } finally {
+            } finally {// 当close ，尝试unreference，即删除
                 trimUnreferencedReaders();
                 closeFilesIfNoPendingRetentionLocks();
             }
@@ -820,10 +820,10 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
     /**
      * Trims translog for terms of files below <code>belowTerm</code> and seq# above <code>aboveSeqNo</code>.
      * Effectively it moves max visible seq# {@link Checkpoint#trimmedAboveSeqNo} therefore {@link TranslogSnapshot} skips those operations.
-     */
+     *///简而言之，将term小于belowTerm的，其中SeqNo大于aboveSeqNo的trim掉，这样TranslogSnapshot会跳过这些操作；#10708  #30176
     public void trimOperations(long belowTerm, long aboveSeqNo) throws IOException {
         assert aboveSeqNo >= SequenceNumbers.NO_OPS_PERFORMED : "aboveSeqNo has to a valid sequence number";
-
+ //获取writeLock以防止并发；如果当前translog的term都小于blowTerm，说明此shard严重落后，不满足条件，直接退出。
         try (ReleasableLock lock = writeLock.acquire()) {
             ensureOpen();
             if (current.getPrimaryTerm() < belowTerm) {
@@ -836,12 +836,12 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
                         + " ]"
                 );
             }
-            // we assume that the current translog generation doesn't have trimmable ops. Verify that.
+            // we assume that the current translog generation doesn't have trimmable ops. Verify that.// 即当前打开着的确保没有需要trim的
             assert current.assertNoSeqAbove(belowTerm, aboveSeqNo);
             // update all existed ones (if it is necessary) as checkpoint and reader are immutable
             final List<TranslogReader> newReaders = new ArrayList<>(readers.size());
             try {
-                for (TranslogReader reader : readers) {
+                for (TranslogReader reader : readers) {//旧reader的primaryTerm小于belowTerm，关闭并且 “trim” 它
                     final TranslogReader newReader = reader.getPrimaryTerm() < belowTerm
                         ? reader.closeIntoTrimmedReader(aboveSeqNo, getChannelFactory())
                         : reader;
@@ -924,7 +924,7 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
 
     /**
      * return stats
-     */
+     *///需要找到不可以安全删除的translog的最小generation;通过deletionPolicy.getLocalCheckpointOfSafeCommit()返回的应该是已经安全的seq，即完全持久化到segment文件里的
     public TranslogStats stats() {
         // acquire lock to make the two numbers roughly consistent (no file change half way)
         try (ReleasableLock lock = readLock.acquire()) {
@@ -1704,7 +1704,7 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
 
     /**
      * Gets the minimum generation that could contain any sequence number after the specified sequence number, or the current generation if
-     * there is no generation that could any such sequence number.
+     * there is no generation that could any such sequence number.//返回可能返回此seqNo之后的operation的generation
      *
      * @param seqNo the sequence number
      * @return the minimum generation for the sequence number
@@ -1714,7 +1714,7 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
             return new TranslogGeneration(translogUUID, minGenerationForSeqNo(seqNo, current, readers));
         }
     }
-
+    // 从所有的gene中找到所有可能包含 seqNo 以及以后操作的所有gen， 然后取最小的
     private static long minGenerationForSeqNo(long seqNo, TranslogWriter writer, List<TranslogReader> readers) {
         long minGen = writer.generation;
         for (final TranslogReader reader : readers) {
@@ -1729,7 +1729,7 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
      * Roll the current translog generation into a new generation if it's not empty. This does not commit the translog.
      *
      * @throws IOException if an I/O exception occurred during any file operations
-     */
+     *///滚动前需要同步数据;
     public void rollGeneration() throws IOException {
         syncBeforeRollGeneration();
         if (current.totalOperations() == 0 && primaryTermSupplier.getAsLong() == current.getPrimaryTerm()) {
@@ -1743,7 +1743,7 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
                 assert Checkpoint.read(location.resolve(CHECKPOINT_FILE_NAME)).generation == current.getGeneration();
                 copyCheckpointTo(location.resolve(getCommitCheckpointFileName(current.getGeneration())));
                 // create a new translog file; this will sync it and update the checkpoint data;
-                current = createWriter(current.getGeneration() + 1);
+                current = createWriter(current.getGeneration() + 1); // roll的时候，就是新建了一个 Writer,并且指定新的generation。todo：但是为什么创建的时候还要引用目录下最小的generation
                 logger.trace("current translog set to [{}]", current.getGeneration());
             } catch (final Exception e) {
                 tragedy.setTragicException(e);
@@ -1785,7 +1785,7 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
             final long minReferencedGen = getMinReferencedGen();
             for (Iterator<TranslogReader> iterator = readers.iterator(); iterator.hasNext();) {
                 TranslogReader reader = iterator.next();
-                if (reader.getGeneration() >= minReferencedGen) {
+                if (reader.getGeneration() >= minReferencedGen) {//只考虑小于minReferencedGen
                     break;
                 }
                 iterator.remove();
@@ -1811,7 +1811,7 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
             throw ex;
         }
     }
-
+    // 两个 min todo
     private long getMinReferencedGen() throws IOException {
         assert readLock.isHeldByCurrentThread() || writeLock.isHeldByCurrentThread();
         long minReferencedGen = Math.min(

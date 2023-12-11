@@ -92,7 +92,7 @@ final class StoreRecovery {
         this.shardId = shardId;
     }
 
-    /**
+    /** 调用的前提是：要知道shard会存在于disk上， 或者一个全新的allocation。
      * Recovers a shard from it's local file system store. This method required pre-knowledge about if the shard should
      * exist on disk ie. has been previously allocated or if the shard is a brand new allocation without pre-existing index
      * files / transaction logs. This
@@ -425,12 +425,12 @@ final class StoreRecovery {
 
     /**
      * Recovers the state of the shard from the store.
-     */ // 整个方法都没有数据传输的部分，说明 peer， snapshot 没有用这个方法
+     */ // 整个方法都没有数据传输的部分，说明 peer， snapshot 没有用这个方法；方法中有关于 type是否等于LOCAL_SHARDS的判断，localshards模式可能也调用。
     private void internalRecoverFromStore(IndexShard indexShard) throws IndexShardRecoveryException {
-        indexShard.preRecovery();
+        indexShard.preRecovery(); // shard recovery 的前置动作
         final RecoveryState recoveryState = indexShard.recoveryState();
         final boolean indexShouldExists = recoveryState.getRecoverySource().getType() != RecoverySource.Type.EMPTY_STORE;
-        indexShard.prepareForIndexRecovery();
+        indexShard.prepareForIndexRecovery(); // 判断是否应该存在：如果是empty，则说明目录应该为空
         SegmentInfos si = null;
         final Store store = indexShard.store();
         store.incRef();
@@ -464,15 +464,15 @@ final class StoreRecovery {
                 }
             } catch (Exception e) {
                 throw new IndexShardRecoveryException(shardId, "failed to fetch index version after copying it over", e);
-            } // 分支1:从同一个机器节点上的其他进程的shards恢复
+            } // 分支1:从同一个机器节点上其他的shards恢复
             if (recoveryState.getRecoverySource().getType() == RecoverySource.Type.LOCAL_SHARDS) {
                 assert indexShouldExists;
                 bootstrap(indexShard, store);
                 writeEmptyRetentionLeasesFile(indexShard);
             } else if (indexShouldExists) { // 如果不是分支1， 分之1其实是一种特例。分支2：索引应该存在，除了empty外，这个值都是true
-                if (recoveryState.getRecoverySource().shouldBootstrapNewHistoryUUID()) { //todo 我们暂时忽略分支2
-                    store.bootstrapNewHistory();
-                    writeEmptyRetentionLeasesFile(indexShard);
+                if (recoveryState.getRecoverySource().shouldBootstrapNewHistoryUUID()) {//分支2是：ExistingStoreRecoverySource
+                    store.bootstrapNewHistory();//分支2.1的含义见ExistingStoreRecoverySource的HistoryUUID含义解析，指定stale的shard为新的primary
+                    writeEmptyRetentionLeasesFile(indexShard);//所以要写一个新的空的租约文件
                 }
                 // since we recover from local, just fill the files and size
                 final RecoveryState.Index index = recoveryState.getIndex();
@@ -486,7 +486,7 @@ final class StoreRecovery {
                 index.setFileDetailsComplete();
             } else { // 主打的是从0创建
                 store.createEmpty(indexShard.indexSettings().getIndexVersionCreated().luceneVersion);
-                final String translogUUID = Translog.createEmptyTranslog(
+                final String translogUUID = Translog.createEmptyTranslog( // 创建空的translog，空：指的是generation为1开始
                     indexShard.shardPath().resolveTranslog(),
                     SequenceNumbers.NO_OPS_PERFORMED,
                     shardId,

@@ -106,11 +106,11 @@ public abstract class RecoverySource implements Writeable, ToXContentObject {
     }
 
     public enum Type {
-        EMPTY_STORE,
-        EXISTING_STORE,
-        PEER,
-        SNAPSHOT,
-        LOCAL_SHARDS
+        EMPTY_STORE, // 新建索引
+        EXISTING_STORE,// 从本地的存储恢复
+        PEER, // 副本， 或者 primary 迁移的新primary都是
+        SNAPSHOT, //
+        LOCAL_SHARDS // 从本节点的其他shards恢复，shrink场景
     }
 
     public abstract Type getType();
@@ -166,7 +166,7 @@ public abstract class RecoverySource implements Writeable, ToXContentObject {
 
         public static final ExistingStoreRecoverySource INSTANCE = new ExistingStoreRecoverySource(false);
         public static final ExistingStoreRecoverySource FORCE_STALE_PRIMARY_INSTANCE = new ExistingStoreRecoverySource(true);
-
+        // force的这个实例，应该是 用户强制 让stale的shard成为primary的时候的恢复源， 所以要用新的HistoryUUId， 而INSTANCE则还是用以前的
         private final boolean bootstrapNewHistoryUUID;
 
         private ExistingStoreRecoverySource(boolean bootstrapNewHistoryUUID) {

@@ -59,10 +59,10 @@ public abstract class TranslogDeletionPolicy {
     /**
      * Records how many retention locks are held against each
      * translog generation
-     */
+     */// key is generation, acquireTranslogGen的时候增加，释放减。建立Translog SnapShot的时候,还有和soft delete有关
     private final Map<Long, Counter> translogRefCounts = new HashMap<>();
     private long localCheckpointOfSafeCommit = SequenceNumbers.NO_OPS_PERFORMED;
-
+    //safe commit：被用来恢复的所需要的最小translog generation；用本地保存的local checkpoint of the safe commit to calculate the minimum required 51905 #49970
     public TranslogDeletionPolicy() {
         if (Assertions.ENABLED) {
             openTranslogRef = new ConcurrentHashMap<>();
@@ -94,7 +94,7 @@ public abstract class TranslogDeletionPolicy {
     /**
      * acquires the basis generation for a new snapshot. Any translog generation above, and including, the returned generation
      * will not be deleted until the returned {@link Releasable} is closed.
-     */
+     */ // 任何大于等于 translogGen 的在 Releasable 的开启期间都不会被删除，当Releasable被关闭，可以删除
     synchronized Releasable acquireTranslogGen(final long translogGen) {
         translogRefCounts.computeIfAbsent(translogGen, l -> Counter.newCounter(false)).addAndGet(1);
         final AtomicBoolean closed = new AtomicBoolean();
@@ -140,8 +140,8 @@ public abstract class TranslogDeletionPolicy {
     /**
      * returns the minimum translog generation that is still required by the system. Any generation below
      * the returned value may be safely deleted
-     *
-     * @param readers current translog readers
+     * 返回仍然被系统锁需要最小的translog generation， 凡是小于这个值的generation都是可以安全删除的；todo 和getLocalCheckpointOfSafeCommit的关系和区别
+     * @param readers current translog readers 看起来这个值，是因为“被需要”可能是被快照锁定着呢
      * @param writer  current translog writer
      */
     public abstract long minTranslogGenRequired(List<TranslogReader> readers, TranslogWriter writer) throws IOException;
@@ -188,7 +188,7 @@ public abstract class TranslogDeletionPolicy {
     protected long currentTime() {
         return System.currentTimeMillis();
     }
-
+    // 被需要的最小gen
     protected long getMinTranslogGenRequiredByLocks() {
         return translogRefCounts.keySet().stream().reduce(Math::min).orElse(Long.MAX_VALUE);
     }
