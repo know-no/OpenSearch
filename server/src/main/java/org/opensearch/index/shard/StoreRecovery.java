@@ -425,7 +425,7 @@ final class StoreRecovery {
 
     /**
      * Recovers the state of the shard from the store.
-     */ // 整个方法都没有数据传输的部分，说明 peer， snapshot 没有用这个方法；方法中有关于 type是否等于LOCAL_SHARDS的判断，localshards模式可能也调用。
+     */ // 整个方法都没有数据传输的部分，说明 peer， snapshot 没有用这个方法, 且这应该是主恢复的；方法中有关于 type是否等于LOCAL_SHARDS的判断，localshards模式可能也调用。
     private void internalRecoverFromStore(IndexShard indexShard) throws IndexShardRecoveryException {
         indexShard.preRecovery(); // shard recovery 的前置动作
         final RecoveryState recoveryState = indexShard.recoveryState();
@@ -495,8 +495,8 @@ final class StoreRecovery {
                 store.associateIndexWithNewTranslog(translogUUID);
                 writeEmptyRetentionLeasesFile(indexShard);
                 indexShard.recoveryState().getIndex().setFileDetailsComplete();//全局搜：恢复步骤 index状态，补充一些细节状态
-            }
-            indexShard.openEngineAndRecoverFromTranslog();
+            }// 但是和IndexShard#recoverLocallyUpToGlobalCheckpoint有什么区别， 这里是Empty和Store的两种恢复模式的调用，而后者是PEER恢复的调用
+            indexShard.openEngineAndRecoverFromTranslog(); 
             indexShard.getEngine().fillSeqNoGaps(indexShard.getPendingPrimaryTerm());
             indexShard.finalizeRecovery();//全局搜：恢复步骤 finalize状态 0
             indexShard.postRecovery("post recovery from shard_store");

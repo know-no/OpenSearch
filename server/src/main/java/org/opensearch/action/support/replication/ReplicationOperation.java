@@ -244,8 +244,8 @@ public class ReplicationOperation<
             @Override
             public void onResponse(ReplicaResponse response) {
                 successfulShards.incrementAndGet(); // 每次成功一个副本，就增加一下计数器
-                try { // 并且，尝试更新 checkpoint
-                    updateCheckPoints(shard, response::localCheckpoint, response::globalCheckpoint);
+                try { // 并且，用副本节点操作成功后返回的checkpoint，尝试更新 primary checkpoint; 副本在TransportReplicationAction#acquireReplicaOperationPermit中,当写入成功，返回Tracker里的point
+                    updateCheckPoints(shard, response::localCheckpoint, response::globalCheckpoint); // 而Tracker里的point是如何更新的呢
                 } finally {
                     decPendingAndFinishIfNeeded();
                 }

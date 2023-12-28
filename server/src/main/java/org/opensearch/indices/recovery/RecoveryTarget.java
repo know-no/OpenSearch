@@ -306,7 +306,7 @@ public class RecoveryTarget extends AbstractRefCounted implements RecoveryTarget
     }
 
     /*** Implementation of {@link RecoveryTargetHandler } */
-
+    // 副本接受到 prepare translog的请求，会打开自己的engine
     @Override
     public void prepareForTranslogOperations(int totalTranslogOps, ActionListener<Void> listener) {
         ActionListener.completeWith(listener, () -> {
@@ -320,7 +320,7 @@ public class RecoveryTarget extends AbstractRefCounted implements RecoveryTarget
     @Override
     public void finalizeRecovery(final long globalCheckpoint, final long trimAboveSeqNo, ActionListener<Void> listener) {
         ActionListener.completeWith(listener, () -> {
-            indexShard.updateGlobalCheckpointOnReplica(globalCheckpoint, "finalizing recovery");
+            indexShard.updateGlobalCheckpointOnReplica(globalCheckpoint, "finalizing recovery");//副本依据主发送来的修改自己，问题是：
             // Persist the global checkpoint.
             indexShard.sync();
             indexShard.persistRetentionLeases();
@@ -391,7 +391,7 @@ public class RecoveryTarget extends AbstractRefCounted implements RecoveryTarget
              * the policy.
              */
             indexShard().updateRetentionLeasesOnReplica(retentionLeases);
-            for (Translog.Operation operation : operations) {
+            for (Translog.Operation operation : operations) { // 应用恢复过来的translog//phase1和phase2之间的写操作与phase2重放操作 之间的时序和冲突问题是通过版本号来过滤掉过期的操作的
                 Engine.Result result = indexShard().applyTranslogOperation(operation, Engine.Operation.Origin.PEER_RECOVERY);
                 if (result.getResultType() == Engine.Result.Type.MAPPING_UPDATE_REQUIRED) {
                     throw new MapperException("mapping updates are not allowed [" + operation + "]");
@@ -405,7 +405,7 @@ public class RecoveryTarget extends AbstractRefCounted implements RecoveryTarget
             }
             // update stats only after all operations completed (to ensure that mapping updates don't mess with stats)
             translog.incrementRecoveredOperations(operations.size());
-            indexShard().sync();
+            indexShard().sync(); // sync的global checkpoint 是从哪里来的？ 副本恢复的时候，创建引擎的时候，那个值是 -2
             // roll over / flush / trim if needed
             indexShard().afterWriteOperation();
             return indexShard().getLocalCheckpoint();
@@ -418,7 +418,7 @@ public class RecoveryTarget extends AbstractRefCounted implements RecoveryTarget
         List<Long> phase1FileSizes,
         List<String> phase1ExistingFileNames,
         List<Long> phase1ExistingFileSizes,
-        int totalTranslogOps,
+        int totalTranslogOps, // 在replica上的话代表primary要向replica传输的translog ops的数量
         ActionListener<Void> listener
     ) {
         ActionListener.completeWith(listener, () -> {
@@ -427,8 +427,8 @@ public class RecoveryTarget extends AbstractRefCounted implements RecoveryTarget
             final RecoveryState.Index index = state().getIndex();
             for (int i = 0; i < phase1ExistingFileNames.size(); i++) {
                 index.addFileDetail(phase1ExistingFileNames.get(i), phase1ExistingFileSizes.get(i), true);
-            }
-            for (int i = 0; i < phase1FileNames.size(); i++) {
+            }                                                  // RecoverySourceHandler
+            for (int i = 0; i < phase1FileNames.size(); i++) { //根据Primary的代码，是：primary和replica上文件名相同，但是内容不同。和在primary，但不再replica上的文件
                 index.addFileDetail(phase1FileNames.get(i), phase1FileSizes.get(i), false);
             }
             index.setFileDetailsComplete();
@@ -450,17 +450,17 @@ public class RecoveryTarget extends AbstractRefCounted implements RecoveryTarget
             // first, we go and move files that were created with the recovery id suffix to
             // the actual names, its ok if we have a corrupted index here, since we have replicas
             // to recover from in case of a full cluster shutdown just when this code executes...
-            multiFileWriter.renameAllTempFiles();
+            multiFileWriter.renameAllTempFiles(); // 转正拷贝过来的文件
             final Store store = store();
             store.incRef();
             try {
                 store.cleanupAndVerify("recovery CleanFilesRequestHandler", sourceMetadata);
                 if (indexShard.indexSettings().getIndexVersionCreated().before(LegacyESVersion.V_6_0_0_rc1)) {
                     store.ensureIndexHasHistoryUUID();
-                }
+                }//建立新的translog，空的。并且给个新的uuid. 会删除原来的这个目录下的translog
                 final String translogUUID = Translog.createEmptyTranslog(
                     indexShard.shardPath().resolveTranslog(),
-                    globalCheckpoint,
+                    globalCheckpoint,//也就是说translog里记录的是从这个点开始之后的translog
                     shardId,
                     indexShard.getPendingPrimaryTerm()
                 );
@@ -474,7 +474,7 @@ public class RecoveryTarget extends AbstractRefCounted implements RecoveryTarget
                     assert indexShard.assertRetentionLeasesPersisted();
                 }
                 indexShard.maybeCheckIndex();
-                state().setStage(RecoveryState.Stage.TRANSLOG);
+                state().setStage(RecoveryState.Stage.TRANSLOG);//接下来进入 translog阶段
             } catch (CorruptIndexException | IndexFormatTooNewException | IndexFormatTooOldException ex) {
                 // this is a fatal exception at this stage.
                 // this means we transferred files from the remote that have not be checksummed and they are

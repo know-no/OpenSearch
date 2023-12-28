@@ -170,7 +170,7 @@ public class ReplicationTracker extends AbstractIndexShardComponent implements L
      * The current in-memory global checkpoint. In primary mode, this is a cached version of the checkpoint computed from the local
      * checkpoints. In replica mode, this is the in-memory global checkpoint that's communicated by the primary.
      */
-    volatile long globalCheckpoint;
+    volatile long globalCheckpoint;// 是所有节点上的已经存入translog的operation的seq的中的最小的那个，即min(max persisted SeqNo in all replicas translog)
 
     /**
      * A callback invoked when the in-memory global checkpoint is updated. For primary mode this occurs if the computed global checkpoint
@@ -1294,21 +1294,21 @@ public class ReplicationTracker extends AbstractIndexShardComponent implements L
             + cps.localCheckpoint
             + " that's above the global checkpoint "
             + getGlobalCheckpoint();
-        if (cps.localCheckpoint < getGlobalCheckpoint()) {
-            pendingInSync.add(allocationId);
+        if (cps.localCheckpoint < getGlobalCheckpoint()) { // 如果恢复了的副本的persisted checkpoint 小于global
+            pendingInSync.add(allocationId); // pending 它， 说明它需要等待 跟上
             try {
                 while (true) {
                     if (pendingInSync.contains(allocationId)) {
-                        waitForLocalCheckpointToAdvance();
-                    } else {
-                        break;
+                        waitForLocalCheckpointToAdvance(); // 循环等待跟上，线程阻塞. 后面，point 跟上了，会被通知到的。
+                    } else {                    // 但是 advance之后，也还没进入 到 in sync，那此分支什么时候进入in sync呢？
+                        break;              // 貌似在另外一个 in sync = true的地方，即updateLocalCheckpoint org.opensearch.index.shard.IndexShard.updateLocalCheckpointForShard
                     }
                 }
             } finally {
                 pendingInSync.remove(allocationId);
             }
         } else {
-            cps.inSync = true;
+            cps.inSync = true; // 加入到 in sync
             updateReplicationGroupAndNotify();
             logger.trace("marked [{}] as in-sync", allocationId);
             updateGlobalCheckpointOnPrimary();

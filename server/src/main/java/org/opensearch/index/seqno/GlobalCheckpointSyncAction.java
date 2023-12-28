@@ -92,8 +92,8 @@ public class GlobalCheckpointSyncAction extends TransportReplicationAction<
             ThreadPool.Names.MANAGEMENT
         );
     }
-
-    public void updateGlobalCheckpointForShard(final ShardId shardId) {
+    // 当 global checkpoint发生变化的时候，会向 系统发起：GlobalCheckpointSyncAction extends TransportReplicationAction ，请求
+    public void updateGlobalCheckpointForShard(final ShardId shardId) { // 会将globalcheckpoint发给副本们
         final ThreadContext threadContext = threadPool.getThreadContext();
         try (ThreadContext.StoredContext ignore = threadContext.stashContext()) {
             threadContext.markAsSystemContext();

@@ -103,8 +103,8 @@ public class CombinedDeletionPolicy extends IndexDeletionPolicy {
     public void onCommit(List<? extends IndexCommit> commits) throws IOException {
         final IndexCommit safeCommit;
         synchronized (this) {
-            final int keptPosition = indexOfKeptCommits(commits, globalCheckpointSupplier.getAsLong());
-            this.safeCommitInfo = SafeCommitInfo.EMPTY;
+            final int keptPosition = indexOfKeptCommits(commits, globalCheckpointSupplier.getAsLong()); // 所以，我们关心一下，globalCheckpoint是怎么被更新的?是在ReplicationOperation中得到副本的localCheckpoint然后，计算推进的
+            this.safeCommitInfo = SafeCommitInfo.EMPTY;         // 通过阅读代码知道： globalCheckpoint，的含义见 LocalCheckpoint
             this.lastCommit = commits.get(commits.size() - 1);
             this.safeCommit = commits.get(keptPosition);
             for (int i = 0; i < keptPosition; i++) {
@@ -115,7 +115,7 @@ public class CombinedDeletionPolicy extends IndexDeletionPolicy {
             updateRetentionPolicy();
             if (keptPosition == commits.size() - 1) {
                 this.maxSeqNoOfNextSafeCommit = Long.MAX_VALUE;
-            } else {
+            } else { // 下面这个变量的名字取的不好，应该换个名字，这个 maxSeqNo不是safe的吧。但是名字却让人觉得是safe的,还是下一个safe，实际感觉是： theMaxSeqNoofTheFirstCommitAfterSafeCommit
                 this.maxSeqNoOfNextSafeCommit = Long.parseLong(commits.get(keptPosition + 1).getUserData().get(SequenceNumbers.MAX_SEQ_NO));
             }
             safeCommit = this.safeCommit;
@@ -148,7 +148,7 @@ public class CombinedDeletionPolicy extends IndexDeletionPolicy {
         assert Thread.holdsLock(this);
         logger.debug("Safe commit [{}], last commit [{}]", commitDescription(safeCommit), commitDescription(lastCommit));
         assert safeCommit.isDeleted() == false : "The safe commit must not be deleted";
-        assert lastCommit.isDeleted() == false : "The last commit must not be deleted";
+        assert lastCommit.isDeleted() == false : "The last commit must not be deleted"; // 这个值是从 safeCommit 读出来的，看safeCommit哪来的
         final long localCheckpointOfSafeCommit = Long.parseLong(safeCommit.getUserData().get(SequenceNumbers.LOCAL_CHECKPOINT_KEY));
         softDeletesPolicy.setLocalCheckpointOfSafeCommit(localCheckpointOfSafeCommit);
         translogDeletionPolicy.setLocalCheckpointOfSafeCommit(localCheckpointOfSafeCommit);
@@ -219,7 +219,7 @@ public class CombinedDeletionPolicy extends IndexDeletionPolicy {
     /**
      * Find the highest index position of a safe index commit whose max sequence number is not greater than the global checkpoint.
      * Index commits with different translog UUID will be filtered out as they don't belong to this engine.
-     */
+     */// 可以理解为找到第一个不大于 global checkpoint的 commit, 即<= , 也就是说 它以及比他小的，都是被其他节点安全持久化的了
     private static int indexOfKeptCommits(List<? extends IndexCommit> commits, long globalCheckpoint) throws IOException {
         final String expectedTranslogUUID = commits.get(commits.size() - 1).getUserData().get(Translog.TRANSLOG_UUID_KEY);
 

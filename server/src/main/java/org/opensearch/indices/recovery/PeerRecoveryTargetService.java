@@ -102,7 +102,7 @@ public class PeerRecoveryTargetService implements IndexEventListener {
         public static final String FILES_INFO = "internal:index/shard/recovery/filesInfo";
         public static final String FILE_CHUNK = "internal:index/shard/recovery/file_chunk";
         public static final String CLEAN_FILES = "internal:index/shard/recovery/clean_files";
-        public static final String TRANSLOG_OPS = "internal:index/shard/recovery/translog_ops";
+        public static final String TRANSLOG_OPS = "internal:index/shard/recovery/translog_ops";// 感觉和下面的写反了，应该先prepare再ops
         public static final String PREPARE_TRANSLOG = "internal:index/shard/recovery/prepare_translog";
         public static final String FINALIZE = "internal:index/shard/recovery/finalize";
         public static final String HANDOFF_PRIMARY_CONTEXT = "internal:index/shard/recovery/handoff_primary_context";
@@ -116,7 +116,7 @@ public class PeerRecoveryTargetService implements IndexEventListener {
     private final ClusterService clusterService;
 
     private final RecoveriesCollection onGoingRecoveries;
-
+    // 代表的是 replica 上的恢复服务
     public PeerRecoveryTargetService(
         ThreadPool threadPool,
         TransportService transportService,
@@ -232,7 +232,7 @@ public class PeerRecoveryTargetService implements IndexEventListener {
                     assert recoveryTarget.sourceNode() != null : "can not do a recovery without a source node";
                     logger.trace("{} preparing shard for peer recovery", recoveryTarget.shardId());
                     indexShard.prepareForIndexRecovery();
-                    final long startingSeqNo = indexShard.recoverLocallyUpToGlobalCheckpoint();
+                    final long startingSeqNo = indexShard.recoverLocallyUpToGlobalCheckpoint();//为什么peer恢复要先到globalCHeckpoint，这和primary上的删除策略有关吗？todo
                     assert startingSeqNo == UNASSIGNED_SEQ_NO || recoveryTarget.state().getStage() == RecoveryState.Stage.TRANSLOG
                         : "unexpected recovery stage [" + recoveryTarget.state().getStage() + "] starting seqno [ " + startingSeqNo + "]";
                     startRequest = getStartRecoveryRequest(logger, clusterService.localNode(), recoveryTarget, startingSeqNo);
@@ -249,13 +249,13 @@ public class PeerRecoveryTargetService implements IndexEventListener {
                     return;
                 }
                 logger.trace("{} starting recovery from {}", startRequest.shardId(), startRequest.sourceNode());
-            } else {
+            } else { // 重新建立链接
                 startRequest = preExistingRequest;
                 requestToSend = new ReestablishRecoveryRequest(recoveryId, startRequest.shardId(), startRequest.targetAllocationId());
                 actionName = PeerRecoverySourceService.Actions.REESTABLISH_RECOVERY;
                 logger.trace("{} reestablishing recovery from {}", startRequest.shardId(), startRequest.sourceNode());
             }
-        }
+        } // 构建会话处理器
         RecoveryResponseHandler responseHandler = new RecoveryResponseHandler(startRequest, timer);
 
         try {
@@ -282,7 +282,7 @@ public class PeerRecoveryTargetService implements IndexEventListener {
      * @param startingSeqNo  a sequence number that an operation-based peer recovery can start with.
      *                       This is the first operation after the local checkpoint of the safe commit if exists.
      * @return a start recovery request
-     */
+     */ // replica在恢复了部分的本地数据后，要向primary发起start recover的请求
     public static StartRecoveryRequest getStartRecoveryRequest(
         Logger logger,
         DiscoveryNode localNode,
@@ -294,14 +294,14 @@ public class PeerRecoveryTargetService implements IndexEventListener {
 
         Store.MetadataSnapshot metadataSnapshot;
         try {
-            metadataSnapshot = recoveryTarget.indexShard().snapshotStoreMetadata();
+            metadataSnapshot = recoveryTarget.indexShard().snapshotStoreMetadata(); // 获取snapshot，禁止indexDeletePolicy将获取的删除
             // Make sure that the current translog is consistent with the Lucene index; otherwise, we have to throw away the Lucene index.
             try {
                 final String expectedTranslogUUID = metadataSnapshot.getCommitUserData().get(Translog.TRANSLOG_UUID_KEY);
                 final long globalCheckpoint = Translog.readGlobalCheckpoint(recoveryTarget.translogLocation(), expectedTranslogUUID);
                 assert globalCheckpoint + 1 >= startingSeqNo : "invalid startingSeqNo " + startingSeqNo + " >= " + globalCheckpoint;
-            } catch (IOException | TranslogCorruptedException e) {
-                logger.warn(
+            } catch (IOException | TranslogCorruptedException e) {//如果副本要向primary发起peer恢复,则要求的开始点,不能比它自己本地保存的global point还要高
+                logger.warn(                                      // 即我们允许要求恢复的开始点比global checkpoint小，因为安全。超过了，可能有不安全的因素
                     new ParameterizedMessage(
                         "error while reading global checkpoint from translog, "
                             + "resetting the starting sequence number from {} to unassigned and recovering as if there are none",
@@ -395,7 +395,7 @@ public class PeerRecoveryTargetService implements IndexEventListener {
         }
 
     }
-
+    // 副本接受到translog，然后操作translog； 在此之前 engine一定是开启了的
     class TranslogOperationsRequestHandler implements TransportRequestHandler<RecoveryTranslogOperationsRequest> {
 
         @Override
@@ -417,7 +417,7 @@ public class PeerRecoveryTargetService implements IndexEventListener {
                 performTranslogOps(request, listener, recoveryRef);
             }
         }
-
+        // 副本应用 translog ops
         private void performTranslogOps(
             final RecoveryTranslogOperationsRequest request,
             final ActionListener<Void> listener,
@@ -426,7 +426,7 @@ public class PeerRecoveryTargetService implements IndexEventListener {
             final RecoveryTarget recoveryTarget = recoveryRef.target();
 
             final ClusterStateObserver observer = new ClusterStateObserver(clusterService, null, logger, threadPool.getThreadContext());
-            final Consumer<Exception> retryOnMappingException = exception -> {
+            final Consumer<Exception> retryOnMappingException = exception -> { // 即：当发生mapping 异常的时候，说明，primary更新了mapping，此刻副本需要等待自己的mapping被更新
                 // in very rare cases a translog replay from primary is processed before a mapping update on this node
                 // which causes local mapping changes since the mapping (clusterstate) might not have arrived on this node.
                 logger.debug("delaying recovery due to missing mapping changes", exception);

@@ -682,15 +682,15 @@ public abstract class TransportReplicationAction<
         }
 
         @Override
-        public void onResponse(Releasable releasable) {
+        public void onResponse(Releasable releasable) { // 在acquireReplicaOperationPermit之后，调用，获取到permit之后，这里是副本实际在写到地方
             assert replica.getActiveOperationsCount() != 0 : "must perform shard operation under a permit";
             try {
-                shardOperationOnReplica(
+                shardOperationOnReplica( // 实际的副本在调用写，写好之后，调用回调
                     replicaRequest.getRequest(),
                     replica,
                     ActionListener.wrap((replicaResult) -> replicaResult.runPostReplicaActions(ActionListener.wrap(r -> {
                         final ReplicaResponse response = new ReplicaResponse(
-                            replica.getLocalCheckpoint(),
+                            replica.getLocalCheckpoint(),  // 实际调用的是getPersistedLocalCheckpoint，也就是说globalcheckpoint的推进，必须是所有节点上的 persisted
                             replica.getLastSyncedGlobalCheckpoint()
                         );
                         releasable.close(); // release shard operation lock before responding to caller

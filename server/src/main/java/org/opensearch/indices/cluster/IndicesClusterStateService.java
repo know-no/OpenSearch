@@ -600,7 +600,7 @@ public class IndicesClusterStateService extends AbstractLifecycleComponent imple
                 if (shard == null) {
                     assert shardRouting.initializing() : shardRouting + " should have been removed by failMissingShards";
                     createShard(nodes, routingTable, shardRouting, state);
-                } else {
+                } else {// old shard不能为空
                     updateShard(nodes, shardRouting, shard, routingTable, state);
                 }
             }

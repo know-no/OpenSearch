@@ -506,7 +506,7 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
                         + ", new "
                         + newRouting
                 );
-            }
+            }// p p ， p r， r p， r r 上面的if判断排除了，p r
             // 如果新的routing 是primary， 虽然不知道旧的是不是
             if (newRouting.primary()) {
                 replicationTracker.updateFromMaster(applyingClusterStateVersion, inSyncAllocationIds, routingTable);
@@ -544,7 +544,7 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
                         replicationTracker.activatePrimaryMode(getLocalCheckpoint());
                         ensurePeerRecoveryRetentionLeasesExist();
                     }
-                } else {
+                } else { // 所以这里： currentRouting是r， newRouting是p，副本切换为主的逻辑在这里
                     assert currentRouting.primary() == false : "term is only increased as part of primary promotion";
                     /* Note that due to cluster state batching an initializing primary shard term can failed and re-assigned
                      * in one state causing it's term to be incremented. Note that if both current shard state and new
@@ -1674,11 +1674,11 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
 
     /**
      * A best effort to bring up this shard to the global checkpoint using the local translog before performing a peer recovery.
-     *
-     * @return a sequence number that an operation-based peer recovery can start with.
-     * This is the first operation after the local checkpoint of the safe commit if exists.
-     */
-    public long recoverLocallyUpToGlobalCheckpoint() {
+     * // 在使用peer恢复之前，先用本地的tranglog，将本地的shard恢复到 globalcheckpoint（这个值是从哪里读取的？是tranglog里面还是集群当下实时的）
+     * @return a sequence number that an operation-based peer recovery can start with.// 代码中显示是：前者。考虑情景：当operation在所有shard的translog里写入，并且
+     * This is the first operation after the local checkpoint of the safe commit if exists.//持久化到了磁盘，然后会推进localCheckpoint，返回primary，带动primary更新global
+     */                                                                                 //在提交translog的时候，将这个global写入到tranglog 提交点
+    public long recoverLocallyUpToGlobalCheckpoint() {                                  // 这个方法调用了之后，才会发送rpc请求，开始peer 恢复
         assert Thread.holdsLock(mutex) == false : "recover locally under mutex";
         if (state != IndexShardState.RECOVERING) {
             throw new IndexShardNotRecoveringException(shardId, state);
@@ -1690,7 +1690,7 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
         try {
             final String translogUUID = store.readLastCommittedSegmentsInfo().getUserData().get(Translog.TRANSLOG_UUID_KEY);
             globalCheckpoint = Translog.readGlobalCheckpoint(translogConfig.getTranslogPath(), translogUUID);
-            safeCommit = store.findSafeIndexCommit(globalCheckpoint);
+            safeCommit = store.findSafeIndexCommit(globalCheckpoint); // store找到那些低于等于此point的lucene commit
         } catch (org.apache.lucene.index.IndexNotFoundException e) {
             logger.trace("skip local recovery as no index commit found");
             return UNASSIGNED_SEQ_NO;
@@ -1701,13 +1701,13 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
         try {
             maybeCheckIndex(); // check index here and won't do it again if ops-based recovery occurs
             recoveryState.setStage(RecoveryState.Stage.TRANSLOG);
-            if (safeCommit.isPresent() == false) {
+            if (safeCommit.isPresent() == false) { // 没有这么一个点，说明translog里的global是比较落后的
                 logger.trace("skip local recovery as no safe commit found");
                 return UNASSIGNED_SEQ_NO;
             }
             assert safeCommit.get().localCheckpoint <= globalCheckpoint : safeCommit.get().localCheckpoint + " > " + globalCheckpoint;
             if (safeCommit.get().localCheckpoint == globalCheckpoint) {
-                logger.trace(
+                logger.trace( //凑巧，lucene的此提交，里面保存的处理过的checkpoint和global一样
                     "skip local recovery as the safe commit is up to date; safe commit {} global checkpoint {}",
                     safeCommit.get(),
                     globalCheckpoint
@@ -1723,12 +1723,12 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
                     globalCheckpoint
                 );
                 recoveryState.getTranslog().totalLocal(0);
-                return safeCommit.get().localCheckpoint + 1;
+                return safeCommit.get().localCheckpoint + 1; // 跳过本地恢复，peer recovery要从此lucene文件 + 1点地方开始
             }
-            try {
+            try {// 开始从本地的
                 final Engine.TranslogRecoveryRunner translogRecoveryRunner = (engine, snapshot) -> {
                     recoveryState.getTranslog().totalLocal(snapshot.totalOperations());
-                    final int recoveredOps = runTranslogRecovery(
+                    final int recoveredOps = runTranslogRecovery(//会调用engine的index方法来推进checker状态
                         engine,
                         snapshot,
                         Engine.Operation.Origin.LOCAL_TRANSLOG_RECOVERY,
@@ -1736,9 +1736,9 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
                     );
                     recoveryState.getTranslog().totalLocal(recoveredOps); // adjust the total local to reflect the actual count
                     return recoveredOps;
-                };
+                }; // 将此静态的 global checkpoint 给engineconfig
                 innerOpenEngineAndTranslog(() -> globalCheckpoint);
-                getEngine().recoverFromTranslog(translogRecoveryRunner, globalCheckpoint);
+                getEngine().recoverFromTranslog(translogRecoveryRunner, globalCheckpoint); // shard恢复到globalCheckpoint， 虽然globalCheckpoint后面还有translog，但是还没用到他们
                 logger.trace("shard locally recovered up to {}", getEngine().getSeqNoStats(globalCheckpoint));
             } finally {
                 synchronized (engineMutex) {
@@ -1920,23 +1920,23 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
             );
         };
         loadGlobalCheckpointToReplicationTracker();//从translog里//maxSeqNo，persistedCheckpoint是从lucene segmentInfo
-        innerOpenEngineAndTranslog(replicationTracker);// 内存里的globalCheckpoint
+        innerOpenEngineAndTranslog(replicationTracker);//interface的唯一接口：getAsLong，每次调用都返回ReplicationTracker里的globalCheckpoint,那应该是动态的
         getEngine().recoverFromTranslog(translogRecoveryRunner, Long.MAX_VALUE); // 开始了translog 状态的恢复
     }
 
     /**
      * Opens the engine on top of the existing lucene engine and translog.
      * The translog is kept but its operations won't be replayed.
-     */
+     */// peer recover 的时候，从primary拷贝过来段文件，然后打开引擎，但是本地的translog是新建里的，是空的，所以，skipTranslog恢复
     public void openEngineAndSkipTranslogRecovery() throws IOException {
         assert routingEntry().recoverySource().getType() == RecoverySource.Type.PEER : "not a peer recovery [" + routingEntry() + "]";
         recoveryState.validateCurrentStage(RecoveryState.Stage.TRANSLOG);
-        loadGlobalCheckpointToReplicationTracker();
-        innerOpenEngineAndTranslog(replicationTracker);
-        getEngine().skipTranslogRecovery();
+        loadGlobalCheckpointToReplicationTracker();//额外动作从segmentInfo读取对应translogUUID，再去translog目录读取globalCheckpoint并且load 进入内存
+        innerOpenEngineAndTranslog(replicationTracker);// 但是从 peer recover 恢复的时候，是删除了translog目录下的文件的，org.opensearch.indices.recovery.RecoveryTarget.cleanFiles
+        getEngine().skipTranslogRecovery();// 删除之后建立的新 translog ，是 以primary传递过来的global 为init global来初始化，并且写入到global的
     }
-
-    private void innerOpenEngineAndTranslog(LongSupplier globalCheckpointSupplier) throws IOException {
+    // 这个方法接受到的 globalCheckpointSupplier,只是个supplier而已，但是不保证是静态的，还是动态的 // 这个方法本身是不区分primary和replica的
+    private void innerOpenEngineAndTranslog(LongSupplier globalCheckpointSupplier) throws IOException {//但primary和replica传入的supplier应该不同
         assert Thread.holdsLock(mutex) == false : "opening engine under mutex";
         if (state != IndexShardState.RECOVERING) {
             throw new IndexShardNotRecoveringException(shardId, state);

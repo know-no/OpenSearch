@@ -257,8 +257,8 @@ public class InternalEngine extends Engine {
                     final LocalCheckpointTracker tracker = getLocalCheckpointTracker();// InternalEngine的LocalCheckpoint
                     assert tracker != null || getTranslog().isOpen() == false;
                     if (tracker != null) {
-                        tracker.markSeqNoAsPersisted(seqNo);
-                    }
+                        tracker.markSeqNoAsPersisted(seqNo); // Translog在持久化某operation之后，会把此operation对应的seqNo以及小于它的seqNo，在localCheckpoint里的都标记为已经处理过
+                    }                                        // translogwriter syncUpto
                 });
                 assert translog.getGeneration() != null;
                 this.translog = translog;
@@ -270,7 +270,7 @@ public class InternalEngine extends Engine {
                     softDeletesPolicy,
                     translog::getLastSyncedGlobalCheckpoint
                 );
-                this.localCheckpointTracker = createLocalCheckpointTracker(localCheckpointTrackerSupplier);
+                this.localCheckpointTracker = createLocalCheckpointTracker(localCheckpointTrackerSupplier); // LocalCheckpointTracker的初始化，从文件初始化
                 writer = createWriter();
                 bootstrapAppendOnlyInfoFromWriter(writer);
                 final Map<String, String> commitData = commitDataAsMap(writer);
@@ -336,13 +336,13 @@ public class InternalEngine extends Engine {
     ) throws IOException {
         final long maxSeqNo;
         final long localCheckpoint;
-        final SequenceNumbers.CommitInfo seqNoStats = SequenceNumbers.loadSeqNoInfoFromLuceneCommit(
-            store.readLastCommittedSegmentsInfo().userData.entrySet()
-        );
+        final SequenceNumbers.CommitInfo seqNoStats = SequenceNumbers.loadSeqNoInfoFromLuceneCommit( // 从lucene的最新提交里读出; 而读出来的又是从：commitIndexWriter 写进去的
+            store.readLastCommittedSegmentsInfo().userData.entrySet()  // 写的LOCAL_CHECKPOINT_KEY，来自于 LocalCheckpoint的processed， MAX_SEQ_NO 来自于Localheckpoint的nextSeqNo.get() - 1;
+        ); // 而在提交的时候，processed，就是写到lucene里的最大的，相当于lucene的persistedSeqInLucene, 是这样吗？进行commitIndexWriter的时候，processed还会增加吗？
         maxSeqNo = seqNoStats.maxSeqNo;
         localCheckpoint = seqNoStats.localCheckpoint;
         logger.trace("recovered maximum sequence number [{}] and local checkpoint [{}]", maxSeqNo, localCheckpoint);
-        return localCheckpointTrackerSupplier.apply(maxSeqNo, localCheckpoint);
+        return localCheckpointTrackerSupplier.apply(maxSeqNo, localCheckpoint); // 读出来以后，还是用这两个值设置，并且还用了localCheckpoint设置了persistedCheckpoint, 为什么不从translog设置这个值，毕竟这个值就是translog推进的
     }
 
     private SoftDeletesPolicy newSoftDeletesPolicy() throws IOException {
@@ -529,12 +529,12 @@ public class InternalEngine extends Engine {
         assert pendingTranslogRecovery.get() : "translogRecovery is not pending but should be";
         pendingTranslogRecovery.set(false); // we are good - now we can commit
     }
-
+    // 在这个方法被调用的时候，有多种不同的恢复，1. 把shard拉到global，它的processed是lucene里读出来，放到tracker的
     private void recoverFromTranslogInternal(TranslogRecoveryRunner translogRecoveryRunner, long recoverUpToSeqNo) throws IOException {
         final int opsRecovered;
         final long localCheckpoint = getProcessedLocalCheckpoint();
         if (localCheckpoint < recoverUpToSeqNo) {
-            try (Translog.Snapshot snapshot = translog.newSnapshot(localCheckpoint + 1, recoverUpToSeqNo)) {
+            try (Translog.Snapshot snapshot = translog.newSnapshot(localCheckpoint + 1, recoverUpToSeqNo)) { // snapshot用完就关闭
                 opsRecovered = translogRecoveryRunner.run(this, snapshot);
             } catch (Exception e) {
                 throw new EngineException(shardId, "failed to recover from translog", e);
@@ -553,8 +553,8 @@ public class InternalEngine extends Engine {
                 translog.currentFileGeneration()
             )
         );
-        flush(false, true);
-        translog.trimUnreferencedReaders();
+        flush(false, true); // 恢复了一个以后，立刻刷盘, commit -> lucene.commit之后会调用IndexDeletionPolicy的oncommit，在es里是CombinedDeletionPolicy
+        translog.trimUnreferencedReaders(); // 来更新所谓的safeCommit，这个动作可能会触发getMinReferencedGen的变化。所以可以调用trim把用过的translog放弃
     }
 
     private Translog openTranslog(

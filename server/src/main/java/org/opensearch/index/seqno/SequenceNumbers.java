@@ -39,7 +39,7 @@ import java.util.Map;
  */
 public class SequenceNumbers {
 
-    public static final String LOCAL_CHECKPOINT_KEY = "local_checkpoint";
+    public static final String LOCAL_CHECKPOINT_KEY = "local_checkpoint"; // 在engine提交的时候，用的是getProcessedCheckpoint，见 InternalEngine#commitIndexWriter
     public static final String MAX_SEQ_NO = "max_seq_no";
     /**
      * Represents an unassigned sequence number (e.g., can be used on primary operations before they are executed).
@@ -67,10 +67,10 @@ public class SequenceNumbers {
 
         for (final Map.Entry<String, String> entry : commitData) {
             final String key = entry.getKey();
-            if (key.equals(SequenceNumbers.LOCAL_CHECKPOINT_KEY)) {
+            if (key.equals(SequenceNumbers.LOCAL_CHECKPOINT_KEY)) { // local 对 local
                 assert localCheckpoint == NO_OPS_PERFORMED : localCheckpoint;
                 localCheckpoint = Long.parseLong(entry.getValue());
-            } else if (key.equals(SequenceNumbers.MAX_SEQ_NO)) {
+            } else if (key.equals(SequenceNumbers.MAX_SEQ_NO)) { // max 对 max
                 assert maxSeqNo == NO_OPS_PERFORMED : maxSeqNo;
                 maxSeqNo = Long.parseLong(entry.getValue());
             }

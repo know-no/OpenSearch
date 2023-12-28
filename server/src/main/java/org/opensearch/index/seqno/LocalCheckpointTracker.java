@@ -69,8 +69,8 @@ public class LocalCheckpointTracker {
     /**
      * The current persisted local checkpoint, i.e., all sequence numbers no more than this number have been durably persisted.
      */
-    final AtomicLong persistedCheckpoint = new AtomicLong(); // todo 什么时候算是 persisted了呢？是已经在吗
-
+    final AtomicLong persistedCheckpoint = new AtomicLong(); // translog在InternalEngine的257行，会交给translog， translogwriter，在operation持久化磁盘后，推进
+    // 也能理解，即在本地translog中持久化，那就一定是persisted的，但为什么不用lucene的segment里面的呢。因为 tranglog的持久化一定早于lucene文件
     /**
      * The next available sequence number.
      */
@@ -84,7 +84,7 @@ public class LocalCheckpointTracker {
      * @param maxSeqNo        the last sequence number assigned, or {@link SequenceNumbers#NO_OPS_PERFORMED}
      * @param localCheckpoint the last known local checkpoint, or {@link SequenceNumbers#NO_OPS_PERFORMED}
      *///已有index的也是从segmentInfo里读取到的
-    public LocalCheckpointTracker(final long maxSeqNo, final long localCheckpoint) {
+                public LocalCheckpointTracker(final long maxSeqNo, final long localCheckpoint) {
         if (localCheckpoint < 0 && localCheckpoint != SequenceNumbers.NO_OPS_PERFORMED) {
             throw new IllegalArgumentException(
                 "local checkpoint must be non-negative or [" + SequenceNumbers.NO_OPS_PERFORMED + "] " + "but was [" + localCheckpoint + "]"
@@ -146,7 +146,7 @@ public class LocalCheckpointTracker {
         final int offset = seqNoToBitSetOffset(seqNo); // 设置此seqNo对应的那个bit位置 为true， 然后将从checkpoint开始拉下的都提升上来
         bitSet.set(offset);
         if (seqNo == checkPoint.get() + 1) {
-            updateCheckpoint(checkPoint, bitSetMap);//很可能是被并发调用（是吗？对吗？），不过能够被调用到一回就够了，会做掉所有的工作？
+            updateCheckpoint(checkPoint, bitSetMap);//很可能是被并发调用（是吗？对吗？），不过能够被调用到一回就够了，会做掉所有的工作？但实际被调用却是 枷锁了
         }//看：commit 7f8e1454的注释
     }
 

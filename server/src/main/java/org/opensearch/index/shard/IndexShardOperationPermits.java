@@ -295,7 +295,7 @@ final class IndexShardOperationPermits implements Closeable {
                     }
                     delayedOperations.add(new DelayedOperation(wrappedListener, debugInfo, stackTrace));
                     return;
-                } else { // 队列里没有在等待的, 直接获得 acquire结果, 然后交给 onAccqired执行, releasable就是 Response
+                } else { // 队列里没有在等待的, 直接获得 acquire结果, 然后交给 onAcquired执行, releasable就是 Response
                     releasable = acquire(debugInfo, stackTrace);
                 }
             }

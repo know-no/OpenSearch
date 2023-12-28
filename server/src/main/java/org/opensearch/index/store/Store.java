@@ -216,7 +216,7 @@ public class Store extends AbstractIndexShardComponent implements Closeable, Ref
     public SegmentInfos readLastCommittedSegmentsInfo() throws IOException {
         failIfCorrupted();
         try {
-            return readSegmentsInfo(null, directory());//读取最后一次的提交的信息
+            return readSegmentsInfo(null, directory());//读取最后一次的提交的信息,一定是提交了的。lucene的commit的，而不是flush的
         } catch (CorruptIndexException | IndexFormatTooOldException | IndexFormatTooNewException ex) {
             markStoreCorrupted(ex);
             throw ex;

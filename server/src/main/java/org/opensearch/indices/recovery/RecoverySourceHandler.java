@@ -216,12 +216,12 @@ public class RecoverySourceHandler {
                 historySource = Engine.HistorySource.INDEX;//开启了软删除，并且使用租约的，可以使用lucene的操作历史来恢复
             } else {
                 historySource = Engine.HistorySource.TRANSLOG;
-            } // 首先获取一个 保留锁， 防止translog 被删除
+            } // 首先获取一个 保留锁， 防止translog 或者 lucene 文件，被trim
             final Closeable retentionLock = shard.acquireHistoryRetentionLock(historySource);
             resources.add(retentionLock);
             final long startingSeqNo;//能够基于序列号开始恢复的条件是：
             final boolean isSequenceNumberBasedRecovery = request.startingSeqNo() != SequenceNumbers.UNASSIGNED_SEQ_NO
-                && isTargetSameHistory()
+                && isTargetSameHistory() // 为何条件这么苛刻？需要两个shard的lucene中保存的translog uuid是否相同，如果相同，说明是同样的lucne段。其实不需要有相同的tranglog
                 && shard.hasCompleteHistoryOperations("peer-recovery", historySource, request.startingSeqNo())//判断选择恢复源中，是否具有需要的数据
                 && (historySource == Engine.HistorySource.TRANSLOG
                     || (retentionLeaseRef.get() != null && retentionLeaseRef.get().retainingSequenceNumber() <= request.startingSeqNo()));
@@ -241,7 +241,7 @@ public class RecoverySourceHandler {
                 // local checkpoint will be retained for the duration of this recovery.
                 logger.trace("history is retained by retention lock");
             }
-
+            //四个阶段：sendFile可以被省略(有条件)
             final StepListener<SendFileResult> sendFileStep = new StepListener<>();
             final StepListener<TimeValue> prepareEngineStep = new StepListener<>();
             final StepListener<SendSnapshotResult> sendSnapshotStep = new StepListener<>();
@@ -258,7 +258,7 @@ public class RecoverySourceHandler {
             } else {
                 final Engine.IndexCommitRef safeCommitRef;
                 try {
-                    safeCommitRef = acquireSafeCommit(shard); // 选择一个commit点
+                    safeCommitRef = acquireSafeCommit(shard); // 选择一个commit点,即 globalcheckpoin下的一个点，因为目前来说最稳定。
                     resources.add(safeCommitRef);
                 } catch (final Exception e) {
                     throw new RecoveryEngineException(shard.shardId(), 1, "snapshot failed", e);
@@ -274,9 +274,9 @@ public class RecoverySourceHandler {
                 // advances and not when creating a new safe commit. In any case this is a best-effort thing since future recoveries can
                 // always fall back to file-based ones, and only really presents a problem if this primary fails before things have settled
                 // down.
-                startingSeqNo = softDeletesEnabled
+                startingSeqNo = softDeletesEnabled // 获取安全点保存点checkpoint的seqNo
                     ? Long.parseLong(safeCommitRef.getIndexCommit().getUserData().get(SequenceNumbers.LOCAL_CHECKPOINT_KEY)) + 1L
-                    : 0; // 这里就需要修改 startingSeqNo，如果开启了soft，则变为从用户的安全提交点后+ 1 否则是0，快照完整 的translog
+                    : 0; // 这里就需要修改 startingSeqNo，如果开启了soft，则变为从用户的安全提交点后+ 1 否则是0，请求0-最大seqNo，则是primary上具有的全部完整 的translog
                 logger.trace("performing file-based recovery followed by history replay starting at [{}]", startingSeqNo);
 
                 try { // 计算出 从historySource里，从startingSeqNo开始有多少操作
@@ -290,7 +290,7 @@ public class RecoverySourceHandler {
                             logger.warn("releasing snapshot caused exception", ex);
                         }
                     });
-
+                    // 前面都是准备，现在可以开始了。获取primary的允许，获取后删除lease(应该是旧的)，删除后回调deleteRetentionLeaseStep
                     final StepListener<ReplicationResponse> deleteRetentionLeaseStep = new StepListener<>();
                     runUnderPrimaryPermit(() -> {
                         try { //todo 全局检查点的回退？
@@ -312,7 +312,7 @@ public class RecoverySourceHandler {
                             deleteRetentionLeaseStep.onResponse(null);
                         }
                     }, shardId + " removing retention lease for [" + request.targetAllocationId() + "]", shard, cancellableThreads, logger);
-
+                    // 回调到这里，进行 PHASE 1， 即传输文件，完成后会回调sendFileStep
                     deleteRetentionLeaseStep.whenComplete(ignored -> {
                         assert Transports.assertNotTransportThread(RecoverySourceHandler.this + "[phase1]");
                         phase1(safeCommitRef.getIndexCommit(), startingSeqNo, () -> estimateNumOps, sendFileStep);
@@ -323,7 +323,7 @@ public class RecoverySourceHandler {
                 }
             }
             assert startingSeqNo >= 0 : "startingSeqNo must be non negative. got: " + startingSeqNo;
-
+            // 进入到prepare translog,发送prepare translog的时候，副本会打开engine。然后主分片会进入prepareEngineStep的回调
             sendFileStep.whenComplete(r -> {
                 assert Transports.assertNotTransportThread(RecoverySourceHandler.this + "[prepareTargetForTranslog]");
                 // For a sequence based recovery, the target can keep its local translog
@@ -332,7 +332,7 @@ public class RecoverySourceHandler {
                     prepareEngineStep
                 );
             }, onFailure);
-
+            // 主分片会进入prepareEngineStep的回调
             prepareEngineStep.whenComplete(prepareEngineTime -> {
                 assert Transports.assertNotTransportThread(RecoverySourceHandler.this + "[phase2]");
                 /*
@@ -340,8 +340,8 @@ public class RecoverySourceHandler {
                  * This means that any document indexed into the primary after this will be replicated to this replica as well
                  * make sure to do this before sampling the max sequence number in the next step, to ensure that we send
                  * all documents up to maxSeqNo in phase2.
-                 */
-                runUnderPrimaryPermit(
+                 */// replica打开自己的engine之后， 就会被加入到 replication group的tracked队列，然后开始接受请求了；在阶段二这段时间，如果有数据写入primary
+                runUnderPrimaryPermit(// 且数据的旧版本出现在发送的translog里，是怎么解决冲突的呢？  新数据的版本号会放到写副本里，然后重放translog的时候，版本低，会被放弃
                     () -> shard.initiateTracking(request.targetAllocationId()),
                     shardId + " initiating tracking of " + request.targetAllocationId(),
                     shard,
@@ -378,7 +378,7 @@ public class RecoverySourceHandler {
             }, onFailure);
 
             // Recovery target can trim all operations >= startingSeqNo as we have sent all these operations in the phase 2
-            final long trimAboveSeqNo = startingSeqNo - 1;
+            final long trimAboveSeqNo = startingSeqNo - 1; // 将副本的persisted checkpoint用来判断副本能够进入 in sync
             sendSnapshotStep.whenComplete(r -> finalizeRecovery(r.targetLocalCheckpoint, trimAboveSeqNo, finalizeStep), onFailure);
 
             finalizeStep.whenComplete(r -> {
@@ -428,7 +428,7 @@ public class RecoverySourceHandler {
             final ActionListener<Releasable> onAcquired = new ActionListener<Releasable>() {
                 @Override
                 public void onResponse(Releasable releasable) {
-                    if (permit.complete(releasable) == false) {
+                    if (permit.complete(releasable) == false) { // todo 什么情况下回调用一次以上呢？还是说为了保险操作acquirePrimaryOperationPermit
                         releasable.close();
                     }
                 }
@@ -439,7 +439,7 @@ public class RecoverySourceHandler {
                 }
             };
             primary.acquirePrimaryOperationPermit(onAcquired, ThreadPool.Names.SAME, reason);
-            try (Releasable ignored = FutureUtils.get(permit)) {
+            try (Releasable ignored = FutureUtils.get(permit)) {// 这是阻塞，但是是在cancelPool里
                 // check that the IndexShard still has the primary authority. This needs to be checked under operation permit to prevent
                 // races, as IndexShard will switch its authority only when it holds all operation permits, see IndexShard.relocated()
                 if (primary.isRelocatedPrimary()) {
@@ -538,18 +538,18 @@ public class RecoverySourceHandler {
      * Perform phase1 of the recovery operations. Once this {@link IndexCommit}
      * snapshot has been performed no commit operations (files being fsync'd)
      * are effectively allowed on this index until all recovery phases are done
-     * <p> // 阶段一执行的时候，primary是不能commit的
+     * <p> // 博客：https://www.easyice.cn/archives/231#recovery 分析了2.0-5.x版本的方式:translog.view, 书里讲了6.x以后
      * Phase1 examines the segment files on the target node and copies over the
      * segments that are missing. Only segments that have the same size and
-     * checksum can be reused
-     */
+     * checksum can be reused //
+     */ // https://cloud.tencent.com/developer/article/1370385
     void phase1(IndexCommit snapshot, long startingSeqNo, IntSupplier translogOps, ActionListener<SendFileResult> listener) {
         cancellableThreads.checkForCancel();
         final Store store = shard.store();
         try {
             StopWatch stopWatch = new StopWatch().start();
             final Store.MetadataSnapshot recoverySourceMetadata;
-            try {
+            try { // 强制校验本地的commit的引用和实际的磁盘文件，防止后面传输有问题的文件
                 recoverySourceMetadata = store.getMetadata(snapshot);
             } catch (CorruptIndexException | IndexFormatTooOldException | IndexFormatTooNewException ex) {
                 shard.failShard("recovery", ex);
@@ -565,8 +565,8 @@ public class RecoverySourceHandler {
                             + " files",
                         name
                     );
-                }
-            } // 尝试跳过phase 1:  如果两边的 synId 不等，是坚决不能跳的 2. 如果synId相同，doc数相同就可以
+                } //sync_id旧版本中提出的一种主副本恢复和同步机制。先flush下primary和所有的replicas，然后收集它们的commitid，确保主分片上没有正在执行的索引操作，然后为每个副本做一次额外的flush，然后记下他们的sync id
+            }//尝试跳过phase1:如果两边的 synId 不等，是坚决不能跳的 2. 如果synId相同，doc数也必须是相同的，否则就是异常.再比较主副的本地segment里的localcheckpoint和maxSeqNo
             if (canSkipPhase1(recoverySourceMetadata, request.metadataSnapshot()) == false) {
                 final List<String> phase1FileNames = new ArrayList<>(); // phase1阶段需要同步的文件个数
                 final List<Long> phase1FileSizes = new ArrayList<>();// 每个文件的大小
@@ -628,11 +628,11 @@ public class RecoverySourceHandler {
                 final StepListener<Void> cleanFilesStep = new StepListener<>();
                 cancellableThreads.checkForCancel();
                 recoveryTarget.receiveFileInfo( // 根据代码流程，可以看到是：RemoteRecoveryTargetHandler
-                    phase1FileNames, // primary向 peer 发送 fileInfo
+                    phase1FileNames, // primary向 peer 发送 fileInfo //PeerRecoveryTargetService.Actions.FILES_INFO
                     phase1FileSizes,
                     phase1ExistingFileNames,
                     phase1ExistingFileSizes,
-                    translogOps.getAsInt(),
+                    translogOps.getAsInt(), //两种情况：基于SeqOperation恢复的，则是要求的开始点到translog的最后 2:不基于操作恢复的，基于文件的，从最后一次安全提交开始的点到最新的
                     sendFileInfoStep
                 );
                 // 为它注册一个只会被调用一次的 回调。 即fileInfo发送完成后，开始发送 阶段1 的数据
@@ -640,13 +640,13 @@ public class RecoverySourceHandler {
                     r -> sendFiles(store, phase1Files.toArray(new StoreFileMetadata[0]), translogOps, sendFilesStep),
                     listener::onFailure
                 );
-
+                // 文件传输完成之后，是创建 retention lease // todo 怎么创建的，有什么用
                 sendFilesStep.whenComplete(r -> createRetentionLease(startingSeqNo, createRetentionLeaseStep), listener::onFailure);
-
+                // 创建好之后，向副本发出，要求副本清理自己本地文件的请求
                 createRetentionLeaseStep.whenComplete(retentionLease -> {
-                    final long lastKnownGlobalCheckpoint = shard.getLastKnownGlobalCheckpoint();
+                    final long lastKnownGlobalCheckpoint = shard.getLastKnownGlobalCheckpoint();//节点公认的安全点
                     assert retentionLease == null || retentionLease.retainingSequenceNumber() - 1 <= lastKnownGlobalCheckpoint
-                        : retentionLease + " vs " + lastKnownGlobalCheckpoint;
+                        : retentionLease + " vs " + lastKnownGlobalCheckpoint;//todo:注释里说的corner case，什么时候此commit不是安全提交点?很多时候都可能是
                     // Establishes new empty translog on the replica with global checkpoint set to lastKnownGlobalCheckpoint. We want
                     // the commit we just copied to be a safe commit on the replica, so why not set the global checkpoint on the replica
                     // to the max seqno of this commit? Because (in rare corner cases) this commit might not be a safe commit here on
@@ -659,7 +659,7 @@ public class RecoverySourceHandler {
                 cleanFilesStep.whenComplete(r -> {
                     final TimeValue took = stopWatch.totalTime();
                     logger.trace("recovery [phase1]: took [{}]", took);
-                    listener.onResponse(
+                    listener.onResponse(// 整理文件阶段结束，就代表阶段一结束，调用阶段一的回调:
                         new SendFileResult(
                             phase1FileNames,
                             phase1FileSizes,
@@ -671,7 +671,7 @@ public class RecoverySourceHandler {
                         )
                     );
                 }, listener::onFailure);
-            } else { // 尝试跳过phase 1： synId 代表着什么
+            } else {//尝试跳过了phase 1：, 但是phase 1 被跳过的几率其实不大，因为1. synced flush的缺点,只适合冷的索引 2. 每个节点是各自管理段文件的，很难会有文件完全相同
                 logger.trace("skipping [phase1] since source and target have identical sync id [{}]", recoverySourceMetadata.getSyncId());
 
                 // but we must still create a retention lease
@@ -832,7 +832,7 @@ public class RecoverySourceHandler {
         sendListener.whenComplete(ignored -> {
             final long skippedOps = sender.skippedOps.get();
             final int totalSentOps = sender.sentOps.get();
-            final long targetLocalCheckpoint = sender.targetLocalCheckpoint.get();
+            final long targetLocalCheckpoint = sender.targetLocalCheckpoint.get(); // 持有的，知道副本的persisted checkpoint
             assert snapshot.totalOperations() == snapshot.skippedOperations() + skippedOps + totalSentOps : String.format(
                 Locale.ROOT,
                 "expected total [%d], overridden [%d], skipped [%d], total sent [%d]",
@@ -843,7 +843,7 @@ public class RecoverySourceHandler {
             );
             stopWatch.stop();
             final TimeValue tookTime = stopWatch.totalTime();
-            logger.trace("recovery [phase2]: took [{}]", tookTime);
+            logger.trace("recovery [phase2]: took [{}]", tookTime); // 知道了副本的persisted checkpoint，让finalize来调用
             listener.onResponse(new SendSnapshotResult(targetLocalCheckpoint, totalSentOps, tookTime));
         }, listener::onFailure);
         sender.start();
@@ -931,8 +931,8 @@ public class RecoverySourceHandler {
         @Override
         protected void executeChunkRequest(OperationChunkRequest request, ActionListener<Void> listener) {
             cancellableThreads.checkForCancel();
-            recoveryTarget.indexTranslogOperations(
-                request.operations,
+            recoveryTarget.indexTranslogOperations(//现在的这个类是在发translog ops，并且接受副本执行完成后的 persisted checkpoint
+                request.operations, // 来更新 targetLocalCheckpoint 持有的副本状态
                 snapshot.totalOperations(),
                 maxSeenAutoIdTimestamp,
                 maxSeqNoOfUpdatesOrDeletes,
@@ -968,18 +968,18 @@ public class RecoverySourceHandler {
          * shard as in-sync and relocating a shard. If we acquire the permit then no relocation handoff can complete before we are done
          * marking the shard as in-sync. If the relocation handoff holds all the permits then after the handoff completes and we acquire
          * the permit then the state of the shard will be relocated and this recovery will fail.
-         */
+         */ //并不是阻塞的呢 ，内部是异步 todo
         runUnderPrimaryPermit(
-            () -> shard.markAllocationIdAsInSync(request.targetAllocationId(), targetLocalCheckpoint),
+            () -> shard.markAllocationIdAsInSync(request.targetAllocationId(), targetLocalCheckpoint),//并不一定能mark为in sync
             shardId + " marking " + request.targetAllocationId() + " as in sync",
             shard,
             cancellableThreads,
             logger
-        );
+        );                          // 是用所有 in-sync的来计算的，如果上面此恢复target没被标记成 in-sync，则它在finalize请求里收到的global比本地local大
         final long globalCheckpoint = shard.getLastKnownGlobalCheckpoint(); // this global checkpoint is persisted in finalizeRecovery
         final StepListener<Void> finalizeListener = new StepListener<>();
-        cancellableThreads.checkForCancel();
-        recoveryTarget.finalizeRecovery(globalCheckpoint, trimAboveSeqNo, finalizeListener);
+        cancellableThreads.checkForCancel(); // 将primary记录的global checkpoint 发送给副本，让其更新； 但是这个global，可能比副本的local要大
+        recoveryTarget.finalizeRecovery(globalCheckpoint, trimAboveSeqNo, finalizeListener);// 那个时候会被忽略
         finalizeListener.whenComplete(r -> {
             runUnderPrimaryPermit(
                 () -> shard.updateGlobalCheckpointForShard(request.targetAllocationId(), globalCheckpoint),
@@ -1078,10 +1078,10 @@ public class RecoverySourceHandler {
             InputStreamIndexInput currentInput = null;
             long offset = 0;
 
-            @Override
+            @Override // 代表一个文件
             protected void onNewResource(StoreFileMetadata md) throws IOException {
                 offset = 0;
-                IOUtils.close(currentInput, () -> currentInput = null);
+                IOUtils.close(currentInput, () -> currentInput = null); // 看具体的操作系统和directory，可能是以mmap的方式打开，也可能是其他方式
                 final IndexInput indexInput = store.directory().openInput(md.name(), IOContext.READONCE);
                 currentInput = new InputStreamIndexInput(indexInput, md.length()) {
                     @Override
@@ -1104,7 +1104,7 @@ public class RecoverySourceHandler {
                 assert Transports.assertNotTransportThread("read file chunk");
                 cancellableThreads.checkForCancel();
                 final byte[] buffer = acquireBuffer();
-                final int bytesRead = currentInput.read(buffer);
+                final int bytesRead = currentInput.read(buffer); //读一部分
                 if (bytesRead == -1) {
                     throw new CorruptIndexException("file truncated; length=" + md.length() + " offset=" + offset, md.name());
                 }
@@ -1123,7 +1123,7 @@ public class RecoverySourceHandler {
             @Override
             protected void executeChunkRequest(FileChunk request, ActionListener<Void> listener) {
                 cancellableThreads.checkForCancel();
-                recoveryTarget.writeFileChunk(
+                recoveryTarget.writeFileChunk( // 发送，由RecoveryTargetHandler(在primary上，代表着replica的)
                     request.md,
                     request.position,
                     request.content,

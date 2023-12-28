@@ -1761,7 +1761,7 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
 
     /**
      * Trims unreferenced translog generations by asking {@link TranslogDeletionPolicy} for the minimum
-     * required generation
+     * required generation // translog是如何删除不再被引用的 -i.ckp的, 找到最小仍然被引用的gen getMinReferencedGen
      */
     public void trimUnreferencedReaders() throws IOException {
         // first check under read lock if any readers can be trimmed
@@ -1811,12 +1811,12 @@ public class Translog extends AbstractIndexShardComponent implements IndexShardC
             throw ex;
         }
     }
-    // 两个 min todo
-    private long getMinReferencedGen() throws IOException {
+    // 两个 min: 两个维度： 1. deletionPolicy维护的由时间和大小等条件组成 2. 排除那些对应操作里“含有”还没有被“安全提交的”的，所谓安全提交，就是说translog的operation对应的lucene数据
+    private long getMinReferencedGen() throws IOException {//还没被所有active的节点都写入成功，即globalCheckpoint是安全提交点
         assert readLock.isHeldByCurrentThread() || writeLock.isHeldByCurrentThread();
         long minReferencedGen = Math.min(
-            deletionPolicy.minTranslogGenRequired(readers, current),
-            minGenerationForSeqNo(deletionPolicy.getLocalCheckpointOfSafeCommit() + 1, current, readers)
+            deletionPolicy.minTranslogGenRequired(readers, current), // 1.
+            minGenerationForSeqNo(deletionPolicy.getLocalCheckpointOfSafeCommit() + 1, current, readers) // 2.
         );
         assert minReferencedGen >= getMinFileGeneration() : "deletion policy requires a minReferenceGen of ["
             + minReferencedGen

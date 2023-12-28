@@ -122,7 +122,7 @@ public class RemoteRecoveryTargetHandler implements RecoveryTargetHandler {
         return targetNode;
     }
 
-    @Override
+    @Override // primary从自己这里抽出来operation
     public void prepareForTranslogOperations(int totalTranslogOps, ActionListener<Void> listener) {
         final String action = PeerRecoveryTargetService.Actions.PREPARE_TRANSLOG;
         final long requestSeqNo = requestSeqNoGenerator.getAndIncrement();
